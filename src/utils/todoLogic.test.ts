@@ -2196,3 +2196,181 @@ test('custom task categories: addCustomCategory, removeCustomCategory, getCatego
 
   resetRuntimeCustomCategoriesForTest();
 });
+
+test('weekly task intensity heatmap: computes time-of-day completion distribution, peak windows, category filtering, and live updates', async () => {
+  const {
+    TASK_INTENSITY_TIME_SLOTS,
+    resolveTimeSlotIdFromHour,
+    formatHourMinuteLabel,
+    resolveTaskCompletionTimeInfo,
+    classifyTaskIntensityLevel,
+    buildWeeklyTaskIntensityHeatmap,
+    clearCompletedWeekTasks,
+  } = await import('./todoLogic');
+
+  // 1. Time slot mapping across all 24 hours
+  assert.equal(TASK_INTENSITY_TIME_SLOTS.length, 6);
+  assert.equal(resolveTimeSlotIdFromHour(7), 'early-morning');
+  assert.equal(resolveTimeSlotIdFromHour(9), 'morning-peak');
+  assert.equal(resolveTimeSlotIdFromHour(11), 'morning-peak');
+  assert.equal(resolveTimeSlotIdFromHour(13), 'midday');
+  assert.equal(resolveTimeSlotIdFromHour(16), 'afternoon');
+  assert.equal(resolveTimeSlotIdFromHour(19), 'evening');
+  assert.equal(resolveTimeSlotIdFromHour(22), 'late-night');
+  assert.equal(resolveTimeSlotIdFromHour(2), 'late-night');
+
+  assert.equal(formatHourMinuteLabel(9, 30), '9:30 AM');
+  assert.equal(formatHourMinuteLabel(14, 5), '2:05 PM');
+  assert.equal(formatHourMinuteLabel(0, 15), '12:15 AM');
+
+  // 2. Explicit completedHour & preset schedule resolution
+  const presetInfo = resolveTaskCompletionTimeInfo({
+    id: 'mon-2',
+    text: 'Team standup',
+  });
+  assert.equal(presetInfo.hour, 9);
+  assert.equal(presetInfo.formattedTime, '9:30 AM');
+  assert.equal(presetInfo.timeSlotId, 'morning-peak');
+
+  const explicitInfo = resolveTaskCompletionTimeInfo({
+    id: 'custom-task-1',
+    text: 'Ship release notes',
+    completedHour: 16,
+    completedAt: '4:10 PM',
+  });
+  assert.equal(explicitInfo.hour, 16);
+  assert.equal(explicitInfo.formattedTime, '4:10 PM');
+  assert.equal(explicitInfo.timeSlotId, 'afternoon');
+
+  // 3. Initial seed state heatmap (10 completed daily tasks across 7 days x 6 slots = 42 cells)
+  const initialCols = createInitialWeekColumns();
+  const initialDetailed = createInitialDetailedTasks();
+  const heatmap = buildWeeklyTaskIntensityHeatmap({
+    columns: initialCols,
+    detailedTasks: initialDetailed,
+  });
+
+  assert.equal(heatmap.days.length, 7);
+  assert.equal(heatmap.timeSlots.length, 6);
+  assert.equal(heatmap.cells.length, 42);
+  assert.equal(heatmap.totalCompletedTasks, 10);
+  assert.ok(heatmap.maxCellCount >= 2);
+  assert.equal(heatmap.peakTimeSlot?.id, 'morning-peak');
+  assert.equal(heatmap.peakTimeSlot?.totalCompleted, 4);
+  assert.equal(heatmap.peakDay?.dayId, 'mon');
+  assert.equal(heatmap.peakDay?.totalCompleted, 4);
+  assert.equal(heatmap.peakCell?.cellId, 'mon-morning-peak');
+  assert.equal(heatmap.peakCell?.count, 2);
+
+  // 4. Live task completion update increments the corresponding day x time-of-day cell
+  const toggled = syncDetailedTaskToggle(
+    initialDetailed,
+    initialCols,
+    'dt-5' // Linked to fri-3 ("Q3 planning session" -> 1:30 PM midday)
+  );
+  const updatedHeatmap = buildWeeklyTaskIntensityHeatmap({
+    columns: toggled.nextColumns,
+    detailedTasks: toggled.nextDetailedTasks,
+  });
+  assert.equal(updatedHeatmap.totalCompletedTasks, 11);
+  const friMiddayCell = updatedHeatmap.cells.find(
+    (c) => c.cellId === 'fri-midday'
+  );
+  assert.equal(friMiddayCell?.count, 1);
+  assert.equal(friMiddayCell?.tasks[0]?.text, 'Q3 planning session');
+
+  // 5. Category filtering isolates completed tasks for that category
+  const workOnlyHeatmap = buildWeeklyTaskIntensityHeatmap({
+    columns: toggled.nextColumns,
+    detailedTasks: toggled.nextDetailedTasks,
+    categoryFilter: 'Work',
+  });
+  assert.equal(workOnlyHeatmap.totalCompletedTasks, 5); // 4 on Mon + 1 on Fri
+
+  // 6. Empty state when 0 tasks are completed
+  const clearedCols = clearCompletedWeekTasks(initialCols);
+  const emptyHeatmap = buildWeeklyTaskIntensityHeatmap({
+    columns: clearedCols,
+    detailedTasks: [],
+  });
+  assert.equal(emptyHeatmap.totalCompletedTasks, 0);
+  assert.equal(emptyHeatmap.maxCellCount, 0);
+  assert.equal(emptyHeatmap.peakTimeSlot, null);
+  assert.equal(emptyHeatmap.peakDay, null);
+  assert.equal(emptyHeatmap.peakCell, null);
+  assert.equal(classifyTaskIntensityLevel(0, 0), 'none');
+});
+
+test('task search overlay: searchTasksAcrossAllDaysAndCategories filters across all days, monthly/yearly goals, custom categories, status, and priority', async () => {
+  const {
+    searchTasksAcrossAllDaysAndCategories,
+    createInitialMonthlyGoals,
+    createInitialYearlyGoals,
+    addCustomCategory,
+    resetRuntimeCustomCategoriesForTest,
+  } = await import('./todoLogic');
+
+  resetRuntimeCustomCategoriesForTest();
+  const cols = createInitialWeekColumns();
+  const monthly = createInitialMonthlyGoals();
+  const yearly = createInitialYearlyGoals();
+
+  // Add a custom category and assign it to Tuesday's first task
+  const { nextCustomCategories } = addCustomCategory([], 'Design', 'indigo');
+  cols[1].tasks[0].category = 'Design';
+
+  // 1. Default unfiltered search returns all active weekly + monthly + yearly tasks
+  const allResults = searchTasksAcrossAllDaysAndCategories({
+    columns: cols,
+    monthlyGoals: monthly,
+    yearlyGoals: yearly,
+    customCategories: nextCustomCategories,
+  });
+  assert.equal(allResults.hasActiveFilters, false);
+  assert.equal(allResults.totalAvailable, 22 + monthly.length + yearly.length);
+  assert.equal(allResults.totalMatched, allResults.totalAvailable);
+  assert.equal(allResults.countsByDayScope.mon, 4);
+  assert.equal(allResults.countsByCategory.Design, 1);
+
+  // 2. Filter by custom category ('Design')
+  const designResults = searchTasksAcrossAllDaysAndCategories({
+    columns: cols,
+    monthlyGoals: monthly,
+    yearlyGoals: yearly,
+    customCategories: nextCustomCategories,
+    filters: { category: 'Design' },
+  });
+  assert.equal(designResults.hasActiveFilters, true);
+  assert.equal(designResults.totalMatched, 1);
+  assert.equal(designResults.items[0]?.id, 'tue-1');
+  assert.equal(designResults.items[0]?.dayId, 'tue');
+  assert.equal(designResults.items[0]?.category, 'Design');
+
+  // 3. Filter by specific day ('thu') + completionStatus ('pending')
+  const thuPending = searchTasksAcrossAllDaysAndCategories({
+    columns: cols,
+    monthlyGoals: monthly,
+    yearlyGoals: yearly,
+    customCategories: nextCustomCategories,
+    filters: { dayScope: 'thu', completionStatus: 'pending' },
+  });
+  assert.equal(thuPending.totalMatched, 2); // thu-1 and thu-3 are pending; thu-2 is completed
+  assert.ok(thuPending.items.every((item) => item.dayId === 'thu' && !item.completed));
+
+  // 4. Filter by keyword matching inside task notes ('roadmap')
+  const noteResults = searchTasksAcrossAllDaysAndCategories({
+    columns: cols,
+    monthlyGoals: monthly,
+    yearlyGoals: yearly,
+    customCategories: nextCustomCategories,
+    filters: { query: 'roadmap' },
+  });
+  assert.equal(noteResults.totalMatched, 1);
+  assert.equal(noteResults.items[0]?.id, 'thu-1');
+  assert.equal(noteResults.items[0]?.matchField, 'notes');
+  assert.ok(noteResults.items[0]?.matchSnippet?.toLowerCase().includes('roadmap'));
+
+  resetRuntimeCustomCategoriesForTest();
+});
+
+

@@ -457,6 +457,8 @@ export interface DailyTask {
   customColor?: CategoryColorId;
   notes?: string;
   recurring?: RecurringInterval;
+  completedHour?: number;
+  completedAt?: string;
 }
 
 export interface DayColumn {
@@ -476,6 +478,8 @@ export interface DetailedTask {
   category: TaskCategory;
   customColor?: CategoryColorId;
   recurring?: RecurringInterval;
+  completedHour?: number;
+  completedAt?: string;
 }
 
 export interface ArchivedTask {
@@ -4466,6 +4470,760 @@ export function detectNewlyUnlockedMilestoneBadges(
   const prevUnlockedIds = new Set(prevEval.unlockedBadges.map((b) => b.id));
   return nextEval.unlockedBadges.filter((b) => !prevUnlockedIds.has(b.id));
 }
+
+export type TaskIntensityTimeSlotId =
+  | 'early-morning'
+  | 'morning-peak'
+  | 'midday'
+  | 'afternoon'
+  | 'evening'
+  | 'late-night';
+
+export type TaskIntensityLevel = 'none' | 'low' | 'medium' | 'high' | 'peak';
+
+export interface TaskIntensityTimeSlot {
+  id: TaskIntensityTimeSlotId;
+  periodName: string;
+  label: string;
+  shortLabel: string;
+  startHour: number;
+  endHour: number;
+}
+
+export const TASK_INTENSITY_TIME_SLOTS: readonly TaskIntensityTimeSlot[] = [
+  {
+    id: 'early-morning',
+    periodName: 'Early Morning',
+    label: '6am – 9am',
+    shortLabel: '6–9a',
+    startHour: 6,
+    endHour: 9,
+  },
+  {
+    id: 'morning-peak',
+    periodName: 'Morning Peak',
+    label: '9am – 12pm',
+    shortLabel: '9a–12p',
+    startHour: 9,
+    endHour: 12,
+  },
+  {
+    id: 'midday',
+    periodName: 'Midday',
+    label: '12pm – 3pm',
+    shortLabel: '12–3p',
+    startHour: 12,
+    endHour: 15,
+  },
+  {
+    id: 'afternoon',
+    periodName: 'Afternoon',
+    label: '3pm – 6pm',
+    shortLabel: '3–6p',
+    startHour: 15,
+    endHour: 18,
+  },
+  {
+    id: 'evening',
+    periodName: 'Evening',
+    label: '6pm – 9pm',
+    shortLabel: '6–9p',
+    startHour: 18,
+    endHour: 21,
+  },
+  {
+    id: 'late-night',
+    periodName: 'Late Night',
+    label: '9pm – 12am',
+    shortLabel: '9p–12a',
+    startHour: 21,
+    endHour: 24,
+  },
+] as const;
+
+export interface TaskIntensityTaskEntry {
+  id: string;
+  text: string;
+  category: TaskCategory;
+  priority: Priority;
+  hour: number;
+  minute: number;
+  formattedTime: string;
+  dayId: string;
+  dayShortName: string;
+  timeSlotId: TaskIntensityTimeSlotId;
+}
+
+export interface TaskIntensityCell {
+  cellId: string;
+  dayId: string;
+  dayName: string;
+  dayShortName: string;
+  dateLabel: string;
+  dayIndex: number;
+  timeSlotId: TaskIntensityTimeSlotId;
+  periodName: string;
+  timeSlotLabel: string;
+  timeSlotShortLabel: string;
+  slotIndex: number;
+  count: number;
+  intensityRatio: number;
+  sharePercentage: number;
+  intensityLevel: TaskIntensityLevel;
+  tasks: TaskIntensityTaskEntry[];
+}
+
+export interface TaskIntensityDaySummary {
+  dayId: string;
+  dayName: string;
+  shortName: string;
+  dateLabel: string;
+  totalCompleted: number;
+  percentageOfTotal: number;
+}
+
+export interface TaskIntensitySlotSummary extends TaskIntensityTimeSlot {
+  totalCompleted: number;
+  percentageOfTotal: number;
+}
+
+export interface WeeklyTaskIntensityData {
+  days: TaskIntensityDaySummary[];
+  timeSlots: TaskIntensitySlotSummary[];
+  cells: TaskIntensityCell[];
+  totalCompletedTasks: number;
+  maxCellCount: number;
+  peakTimeSlot: TaskIntensitySlotSummary | null;
+  peakDay: TaskIntensityDaySummary | null;
+  peakCell: TaskIntensityCell | null;
+}
+
+const SEED_TASK_COMPLETION_SCHEDULE: Record<
+  string,
+  { hour: number; minute: number }
+> = {
+  'mon-1': { hour: 8, minute: 15 }, // Check emails -> Early Morning (8:15 AM)
+  'mon-2': { hour: 9, minute: 30 }, // Team standup -> Morning Peak (9:30 AM)
+  'mon-3': { hour: 10, minute: 45 }, // Client follow-up -> Morning Peak (10:45 AM)
+  'mon-4': { hour: 14, minute: 20 }, // Review inbox -> Midday (2:20 PM)
+  'tue-1': { hour: 10, minute: 15 }, // Write Q2 report -> Morning Peak (10:15 AM)
+  'tue-2': { hour: 15, minute: 40 }, // Review pull requests -> Afternoon (3:40 PM)
+  'tue-3': { hour: 17, minute: 30 }, // Grocery shopping -> Afternoon (5:30 PM)
+  'wed-1': { hour: 11, minute: 10 }, // Plan social media posts -> Morning Peak (11:10 AM)
+  'wed-2': { hour: 14, minute: 15 }, // Edit blog post -> Midday (2:15 PM)
+  'wed-3': { hour: 10, minute: 0 }, // Doctor appointment -> Morning Peak (10:00 AM)
+  'wed-4': { hour: 18, minute: 40 }, // Vacuum living room -> Evening (6:40 PM)
+  'thu-1': { hour: 9, minute: 45 }, // Prepare presentation -> Morning Peak (9:45 AM)
+  'thu-2': { hour: 11, minute: 15 }, // Submit expense report -> Morning Peak (11:15 AM)
+  'thu-3': { hour: 7, minute: 30 }, // Exercise - walk dog -> Early Morning (7:30 AM)
+  'fri-1': { hour: 16, minute: 20 }, // Clean bathroom -> Afternoon (4:20 PM)
+  'fri-2': { hour: 20, minute: 15 }, // Read for 30 minutes -> Evening (8:15 PM)
+  'fri-3': { hour: 13, minute: 30 }, // Q3 planning session -> Midday (1:30 PM)
+  'sat-1': { hour: 10, minute: 20 }, // Laundry - fold & put away -> Morning Peak (10:20 AM)
+  'sat-2': { hour: 19, minute: 10 }, // Call parents -> Evening (7:10 PM)
+  'sun-1': { hour: 16, minute: 45 }, // Meal prep for the week -> Afternoon (4:45 PM)
+  'sun-2': { hour: 8, minute: 45 }, // Water indoor plants -> Early Morning (8:45 AM)
+  'sun-3': { hour: 21, minute: 30 }, // Read new design book -> Late Night (9:30 PM)
+  // Detailed task fallback mappings
+  'dt-1': { hour: 10, minute: 45 },
+  'dt-2': { hour: 15, minute: 40 },
+  'dt-3': { hour: 18, minute: 40 },
+  'dt-4': { hour: 19, minute: 10 },
+  'dt-5': { hour: 13, minute: 30 },
+  'dt-6': { hour: 11, minute: 15 },
+  'dt-7': { hour: 17, minute: 30 },
+  'dt-8': { hour: 9, minute: 30 },
+  'dt-9': { hour: 11, minute: 10 },
+  'dt-10': { hour: 21, minute: 30 },
+};
+
+export function resolveTimeSlotIdFromHour(
+  rawHour: number
+): TaskIntensityTimeSlotId {
+  const normalized =
+    ((Math.floor(Number.isFinite(rawHour) ? rawHour : 9) % 24) + 24) % 24;
+  if (normalized >= 6 && normalized < 9) return 'early-morning';
+  if (normalized >= 9 && normalized < 12) return 'morning-peak';
+  if (normalized >= 12 && normalized < 15) return 'midday';
+  if (normalized >= 15 && normalized < 18) return 'afternoon';
+  if (normalized >= 18 && normalized < 21) return 'evening';
+  return 'late-night';
+}
+
+export function formatHourMinuteLabel(hour: number, minute = 0): string {
+  const safeHour =
+    ((Math.floor(Number.isFinite(hour) ? hour : 9) % 24) + 24) % 24;
+  const safeMinute = Math.max(
+    0,
+    Math.min(59, Math.floor(Number.isFinite(minute) ? minute : 0))
+  );
+  const period = safeHour >= 12 ? 'PM' : 'AM';
+  const hour12 = safeHour % 12 === 0 ? 12 : safeHour % 12;
+  const minuteStr = String(safeMinute).padStart(2, '0');
+  return `${hour12}:${minuteStr} ${period}`;
+}
+
+export function resolveTaskCompletionTimeInfo(task: {
+  id: string;
+  text: string;
+  category?: TaskCategory;
+  priority?: Priority;
+  completedHour?: number;
+  completedAt?: string;
+}): {
+  hour: number;
+  minute: number;
+  formattedTime: string;
+  timeSlotId: TaskIntensityTimeSlotId;
+} {
+  if (
+    typeof task.completedHour === 'number' &&
+    Number.isFinite(task.completedHour)
+  ) {
+    const hour = ((Math.floor(task.completedHour) % 24) + 24) % 24;
+    const minute = 15;
+    const formattedTime =
+      typeof task.completedAt === 'string' && task.completedAt.trim().length > 0
+        ? task.completedAt.trim()
+        : formatHourMinuteLabel(hour, minute);
+    return {
+      hour,
+      minute,
+      formattedTime,
+      timeSlotId: resolveTimeSlotIdFromHour(hour),
+    };
+  }
+
+  const preset = SEED_TASK_COMPLETION_SCHEDULE[task.id];
+  if (preset) {
+    return {
+      hour: preset.hour,
+      minute: preset.minute,
+      formattedTime: formatHourMinuteLabel(preset.hour, preset.minute),
+      timeSlotId: resolveTimeSlotIdFromHour(preset.hour),
+    };
+  }
+
+  // Deterministic hash fallback across active hours (7:00 AM to 10:45 PM)
+  const seedStr = `${task.id || ''}:${(task.text || '').trim().toLowerCase()}:${
+    task.category || 'Work'
+  }`;
+  let hash = 0;
+  for (let i = 0; i < seedStr.length; i++) {
+    hash = (hash * 33 + seedStr.charCodeAt(i)) >>> 0;
+  }
+  const activeHours = [7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
+  const hour = activeHours[hash % activeHours.length];
+  const minutes = [0, 10, 15, 20, 30, 40, 45, 50];
+  const minute = minutes[(hash >>> 4) % minutes.length];
+
+  return {
+    hour,
+    minute,
+    formattedTime: formatHourMinuteLabel(hour, minute),
+    timeSlotId: resolveTimeSlotIdFromHour(hour),
+  };
+}
+
+export function classifyTaskIntensityLevel(
+  count: number,
+  maxCellCount: number
+): TaskIntensityLevel {
+  if (count <= 0 || maxCellCount <= 0) return 'none';
+  if (count === maxCellCount && count >= 2) return 'peak';
+  const ratio = count / maxCellCount;
+  if (ratio >= 0.75) return 'high';
+  if (ratio >= 0.45) return 'medium';
+  return 'low';
+}
+
+export function buildWeeklyTaskIntensityHeatmap(input: {
+  columns: DayColumn[];
+  detailedTasks?: DetailedTask[];
+  categoryFilter?: 'All' | TaskCategory;
+}): WeeklyTaskIntensityData {
+  const { columns, detailedTasks = [], categoryFilter = 'All' } = input;
+  const normalizedFilter =
+    categoryFilter && categoryFilter !== 'All'
+      ? categoryFilter.trim().toLowerCase()
+      : null;
+
+  const matchesCategory = (cat?: TaskCategory): boolean => {
+    if (!normalizedFilter) return true;
+    return (cat || 'Work').trim().toLowerCase() === normalizedFilter;
+  };
+
+  const dayColumns: DayColumn[] =
+    columns && columns.length > 0 ? columns : createInitialWeekColumns();
+
+  // Track which dailyTaskIds are already represented in columns so linked detailedTasks don't double-count
+  const countedDailyTaskIds = new Set<string>();
+  const entriesByDayAndSlot = new Map<string, TaskIntensityTaskEntry[]>();
+
+  for (const col of dayColumns) {
+    const shortName = col.dayName.slice(0, 3);
+    for (const task of col.tasks) {
+      const cleanText = (task.text || '').trim();
+      if (!task.completed || !cleanText || cleanText === '—') continue;
+      countedDailyTaskIds.add(task.id);
+
+      if (!matchesCategory(task.category)) continue;
+
+      const timeInfo = resolveTaskCompletionTimeInfo(task);
+      const key = `${col.id}::${timeInfo.timeSlotId}`;
+      const list = entriesByDayAndSlot.get(key) ?? [];
+      list.push({
+        id: task.id,
+        text: cleanText,
+        category: task.category || 'Work',
+        priority: task.priority || 'Med',
+        hour: timeInfo.hour,
+        minute: timeInfo.minute,
+        formattedTime: timeInfo.formattedTime,
+        dayId: col.id,
+        dayShortName: shortName,
+        timeSlotId: timeInfo.timeSlotId,
+      });
+      entriesByDayAndSlot.set(key, list);
+    }
+  }
+
+  // Include any completed detailedTasks whose linked daily task was not already counted as completed
+  const dayIdSet = new Set(dayColumns.map((c) => c.id));
+  for (const dt of detailedTasks) {
+    const cleanText = (dt.text || '').trim();
+    if (!dt.completed || !cleanText || cleanText === '—') continue;
+
+    const link = DETAILED_DAILY_TASK_LINKS.find(
+      (l) => l.detailedTaskId === dt.id
+    );
+    if (link && countedDailyTaskIds.has(link.dailyTaskId)) {
+      continue;
+    }
+
+    if (!matchesCategory(dt.category)) continue;
+
+    let targetDayId = link?.dayId ?? '';
+    if (!targetDayId || !dayIdSet.has(targetDayId)) {
+      // Deterministically assign unlinked detailed task to a day column
+      let hash = 0;
+      for (let i = 0; i < dt.id.length; i++) {
+        hash = (hash * 31 + dt.id.charCodeAt(i)) >>> 0;
+      }
+      targetDayId = dayColumns[hash % dayColumns.length]?.id ?? 'mon';
+    }
+
+    const targetCol =
+      dayColumns.find((c) => c.id === targetDayId) ?? dayColumns[0];
+    const shortName = targetCol ? targetCol.dayName.slice(0, 3) : 'Mon';
+    const timeInfo = resolveTaskCompletionTimeInfo(dt);
+    const key = `${targetDayId}::${timeInfo.timeSlotId}`;
+    const list = entriesByDayAndSlot.get(key) ?? [];
+    list.push({
+      id: dt.id,
+      text: cleanText,
+      category: dt.category || 'Work',
+      priority: dt.priority || 'Med',
+      hour: timeInfo.hour,
+      minute: timeInfo.minute,
+      formattedTime: timeInfo.formattedTime,
+      dayId: targetDayId,
+      dayShortName: shortName,
+      timeSlotId: timeInfo.timeSlotId,
+    });
+    entriesByDayAndSlot.set(key, list);
+  }
+
+  let totalCompletedTasks = 0;
+  let maxCellCount = 0;
+
+  for (const list of entriesByDayAndSlot.values()) {
+    totalCompletedTasks += list.length;
+    if (list.length > maxCellCount) {
+      maxCellCount = list.length;
+    }
+  }
+
+  const cells: TaskIntensityCell[] = [];
+  const dayTotals = new Map<string, number>();
+  const slotTotals = new Map<TaskIntensityTimeSlotId, number>();
+
+  dayColumns.forEach((col, dayIndex) => {
+    const shortName = col.dayName.slice(0, 3);
+    TASK_INTENSITY_TIME_SLOTS.forEach((slot, slotIndex) => {
+      const key = `${col.id}::${slot.id}`;
+      const tasks = (entriesByDayAndSlot.get(key) ?? []).sort(
+        (a, b) => a.hour * 60 + a.minute - (b.hour * 60 + b.minute)
+      );
+      const count = tasks.length;
+
+      dayTotals.set(col.id, (dayTotals.get(col.id) ?? 0) + count);
+      slotTotals.set(slot.id, (slotTotals.get(slot.id) ?? 0) + count);
+
+      const intensityRatio =
+        maxCellCount === 0
+          ? 0
+          : Number((count / maxCellCount).toFixed(4));
+      const sharePercentage =
+        totalCompletedTasks === 0
+          ? 0
+          : Math.round((count / totalCompletedTasks) * 100);
+
+      cells.push({
+        cellId: `${col.id}-${slot.id}`,
+        dayId: col.id,
+        dayName: col.dayName,
+        dayShortName: shortName,
+        dateLabel: col.dateLabel,
+        dayIndex,
+        timeSlotId: slot.id,
+        periodName: slot.periodName,
+        timeSlotLabel: slot.label,
+        timeSlotShortLabel: slot.shortLabel,
+        slotIndex,
+        count,
+        intensityRatio,
+        sharePercentage,
+        intensityLevel: classifyTaskIntensityLevel(count, maxCellCount),
+        tasks,
+      });
+    });
+  });
+
+  const days: TaskIntensityDaySummary[] = dayColumns.map((col) => {
+    const totalCompleted = dayTotals.get(col.id) ?? 0;
+    return {
+      dayId: col.id,
+      dayName: col.dayName,
+      shortName: col.dayName.slice(0, 3),
+      dateLabel: col.dateLabel,
+      totalCompleted,
+      percentageOfTotal:
+        totalCompletedTasks === 0
+          ? 0
+          : Math.round((totalCompleted / totalCompletedTasks) * 100),
+    };
+  });
+
+  const timeSlots: TaskIntensitySlotSummary[] = TASK_INTENSITY_TIME_SLOTS.map(
+    (slot) => {
+      const totalCompleted = slotTotals.get(slot.id) ?? 0;
+      return {
+        ...slot,
+        totalCompleted,
+        percentageOfTotal:
+          totalCompletedTasks === 0
+            ? 0
+            : Math.round((totalCompleted / totalCompletedTasks) * 100),
+      };
+    }
+  );
+
+  let peakTimeSlot: TaskIntensitySlotSummary | null = null;
+  for (const slot of timeSlots) {
+    if (
+      slot.totalCompleted > 0 &&
+      (!peakTimeSlot || slot.totalCompleted > peakTimeSlot.totalCompleted)
+    ) {
+      peakTimeSlot = slot;
+    }
+  }
+
+  let peakDay: TaskIntensityDaySummary | null = null;
+  for (const day of days) {
+    if (
+      day.totalCompleted > 0 &&
+      (!peakDay || day.totalCompleted > peakDay.totalCompleted)
+    ) {
+      peakDay = day;
+    }
+  }
+
+  let peakCell: TaskIntensityCell | null = null;
+  for (const cell of cells) {
+    if (cell.count > 0 && (!peakCell || cell.count > peakCell.count)) {
+      peakCell = cell;
+    }
+  }
+
+  return {
+    days,
+    timeSlots,
+    cells,
+    totalCompletedTasks,
+    maxCellCount,
+    peakTimeSlot,
+    peakDay,
+    peakCell,
+  };
+}
+
+export type TaskSearchScopeFilter =
+  | 'all'
+  | 'mon'
+  | 'tue'
+  | 'wed'
+  | 'thu'
+  | 'fri'
+  | 'sat'
+  | 'sun'
+  | 'monthly'
+  | 'yearly';
+
+export type TaskSearchCompletionFilter = 'all' | 'pending' | 'completed';
+export type TaskSearchPriorityFilter = 'all' | Priority;
+
+export interface TaskSearchOverlayFilterState {
+  query: string;
+  dayScope: TaskSearchScopeFilter;
+  category: 'All' | TaskCategory;
+  completionStatus: TaskSearchCompletionFilter;
+  priority: TaskSearchPriorityFilter;
+}
+
+export interface TaskSearchResultItem {
+  id: string;
+  sourceType: 'daily' | 'monthly' | 'yearly';
+  dayId?: string;
+  dayName: string;
+  shortDayLabel: string;
+  dateLabel: string;
+  isToday?: boolean;
+  text: string;
+  completed: boolean;
+  priority: Priority;
+  status: TaskStatus;
+  category: TaskCategory;
+  customColor?: CategoryColorId;
+  notes?: string;
+  recurring?: RecurringInterval;
+  matchField?: SearchMatchField;
+  matchSnippet?: string;
+}
+
+export interface TaskSearchOverlayResults {
+  items: TaskSearchResultItem[];
+  totalMatched: number;
+  totalAvailable: number;
+  countsByDayScope: Record<TaskSearchScopeFilter, number>;
+  countsByCategory: Record<string, number>;
+  countsByCompletion: {
+    all: number;
+    pending: number;
+    completed: number;
+  };
+  hasActiveFilters: boolean;
+}
+
+export const DEFAULT_TASK_SEARCH_OVERLAY_FILTERS: TaskSearchOverlayFilterState =
+  {
+    query: '',
+    dayScope: 'all',
+    category: 'All',
+    completionStatus: 'all',
+    priority: 'all',
+  };
+
+export function searchTasksAcrossAllDaysAndCategories(input: {
+  columns: DayColumn[];
+  monthlyGoals?: DetailedTask[];
+  yearlyGoals?: DetailedTask[];
+  customCategories?: readonly CustomCategoryDefinition[];
+  filters?: Partial<TaskSearchOverlayFilterState>;
+}): TaskSearchOverlayResults {
+  const {
+    columns = [],
+    monthlyGoals = [],
+    yearlyGoals = [],
+    customCategories,
+    filters,
+  } = input;
+
+  const query = (filters?.query ?? '').trim();
+  const dayScope: TaskSearchScopeFilter = filters?.dayScope ?? 'all';
+  const category: 'All' | TaskCategory = filters?.category ?? 'All';
+  const completionStatus: TaskSearchCompletionFilter =
+    filters?.completionStatus ?? 'all';
+  const priority: TaskSearchPriorityFilter = filters?.priority ?? 'all';
+
+  const normalizedCategory =
+    category !== 'All' ? category.trim().toLowerCase() : null;
+
+  const resolveCanonicalCategory = (rawCat: unknown): TaskCategory => {
+    const raw = typeof rawCat === 'string' ? rawCat.trim() : '';
+    if (!raw) return 'Work';
+    if (isValidCategory(raw, customCategories)) return raw;
+    const sanitized = sanitizeCustomCategoryName(raw);
+    return sanitized || 'Work';
+  };
+
+  // Collect all non-empty candidate tasks across daily columns, monthly goals, and yearly goals
+  const allCandidates: TaskSearchResultItem[] = [];
+
+  for (const col of columns) {
+    for (const task of col.tasks) {
+      const cleanText = (task.text || '').trim();
+      if (!cleanText || cleanText === '—') continue;
+      allCandidates.push({
+        id: task.id,
+        sourceType: 'daily',
+        dayId: col.id,
+        dayName: col.dayName,
+        shortDayLabel: col.dayName.slice(0, 3),
+        dateLabel: col.dateLabel,
+        isToday: Boolean(col.isToday),
+        text: cleanText,
+        completed: Boolean(task.completed),
+        priority: task.priority || 'Med',
+        status: task.status || (task.completed ? 'Done' : 'To Do'),
+        category: resolveCanonicalCategory(task.category),
+        customColor: task.customColor,
+        notes: task.notes || '',
+        recurring: task.recurring || 'none',
+      });
+    }
+  }
+
+  for (const goal of monthlyGoals) {
+    const cleanText = (goal.text || '').trim();
+    if (!cleanText || cleanText === '—') continue;
+    allCandidates.push({
+      id: goal.id,
+      sourceType: 'monthly',
+      dayName: 'Monthly Goals',
+      shortDayLabel: 'Month',
+      dateLabel: 'Monthly',
+      text: cleanText,
+      completed: Boolean(goal.completed),
+      priority: goal.priority || 'Med',
+      status: goal.status || (goal.completed ? 'Done' : 'To Do'),
+      category: resolveCanonicalCategory(goal.category),
+      customColor: goal.customColor,
+      recurring: goal.recurring || 'none',
+    });
+  }
+
+  for (const goal of yearlyGoals) {
+    const cleanText = (goal.text || '').trim();
+    if (!cleanText || cleanText === '—') continue;
+    allCandidates.push({
+      id: goal.id,
+      sourceType: 'yearly',
+      dayName: 'Yearly Goals',
+      shortDayLabel: 'Year',
+      dateLabel: 'Yearly',
+      text: cleanText,
+      completed: Boolean(goal.completed),
+      priority: goal.priority || 'Med',
+      status: goal.status || (goal.completed ? 'Done' : 'To Do'),
+      category: resolveCanonicalCategory(goal.category),
+      customColor: goal.customColor,
+      recurring: goal.recurring || 'none',
+    });
+  }
+
+  const countsByDayScope: Record<TaskSearchScopeFilter, number> = {
+    all: 0,
+    mon: 0,
+    tue: 0,
+    wed: 0,
+    thu: 0,
+    fri: 0,
+    sat: 0,
+    sun: 0,
+    monthly: 0,
+    yearly: 0,
+  };
+
+  const countsByCategory: Record<string, number> = {
+    All: 0,
+  };
+  for (const catName of getAllCategories(customCategories)) {
+    countsByCategory[catName] = 0;
+  }
+
+  const countsByCompletion = {
+    all: 0,
+    pending: 0,
+    completed: 0,
+  };
+
+  const matchedItems: TaskSearchResultItem[] = [];
+
+  for (const item of allCandidates) {
+    const matchDetail = getTaskMatchDetail(item, query);
+    if (!matchDetail.matches) continue;
+
+    const itemScope: TaskSearchScopeFilter =
+      item.sourceType === 'daily'
+        ? ((item.dayId as TaskSearchScopeFilter) || 'mon')
+        : item.sourceType;
+
+    const matchesScope = dayScope === 'all' || itemScope === dayScope;
+    const matchesCategory =
+      !normalizedCategory ||
+      item.category.toLowerCase() === normalizedCategory;
+    const matchesCompletion =
+      completionStatus === 'all' ||
+      (completionStatus === 'completed' ? item.completed : !item.completed);
+    const matchesPriority = priority === 'all' || item.priority === priority;
+
+    // Facet counts: count items matching query + other active filters so facet badges stay contextual
+    if (matchesCategory && matchesCompletion && matchesPriority) {
+      countsByDayScope.all++;
+      if (countsByDayScope[itemScope] !== undefined) {
+        countsByDayScope[itemScope]++;
+      }
+    }
+
+    if (matchesScope && matchesCompletion && matchesPriority) {
+      countsByCategory.All = (countsByCategory.All || 0) + 1;
+      countsByCategory[item.category] =
+        (countsByCategory[item.category] || 0) + 1;
+    }
+
+    if (matchesScope && matchesCategory && matchesPriority) {
+      countsByCompletion.all++;
+      if (item.completed) {
+        countsByCompletion.completed++;
+      } else {
+        countsByCompletion.pending++;
+      }
+    }
+
+    if (
+      matchesScope &&
+      matchesCategory &&
+      matchesCompletion &&
+      matchesPriority
+    ) {
+      matchedItems.push({
+        ...item,
+        matchField: query ? matchDetail.field : undefined,
+        matchSnippet: query ? matchDetail.snippet : undefined,
+      });
+    }
+  }
+
+  const hasActiveFilters =
+    query.length > 0 ||
+    dayScope !== 'all' ||
+    category !== 'All' ||
+    completionStatus !== 'all' ||
+    priority !== 'all';
+
+  return {
+    items: matchedItems,
+    totalMatched: matchedItems.length,
+    totalAvailable: allCandidates.length,
+    countsByDayScope,
+    countsByCategory,
+    countsByCompletion,
+    hasActiveFilters,
+  };
+}
+
+
 
 
 

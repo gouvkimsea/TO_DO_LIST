@@ -69,6 +69,9 @@ circle {
   --chart-pending-fill: #DFD8CE;
   --donut-track-stroke: #EFECE6;
   --donut-progress-stroke: #604E3D;
+  --heatmap-empty-fill: #F7F3EC;
+  --heatmap-empty-stroke: #E6E0D6;
+  --heatmap-selected-stroke: #2F2B28;
 }
 
 html.dark {
@@ -83,6 +86,9 @@ html.dark {
   --chart-pending-fill: #3D3630;
   --donut-track-stroke: #2E2924;
   --donut-progress-stroke: #E28E64;
+  --heatmap-empty-fill: #24201C;
+  --heatmap-empty-stroke: #38322C;
+  --heatmap-selected-stroke: #F4EFE8;
 }
 
 @media (min-width: 640px) {

@@ -6,6 +6,7 @@ import {
   WeeklyCompletionProgressBar,
 } from '../components/LiveProgressSection';
 import { WeeklyProgressTrendsChart } from '../components/WeeklyProgressTrendsChart';
+import { WeeklyTaskIntensityHeatmap } from '../components/WeeklyTaskIntensityHeatmap';
 import { SharedDashboardPageProps } from './types';
 
 export const LiveProgressPage: React.FC<SharedDashboardPageProps> = ({
@@ -30,7 +31,9 @@ export const LiveProgressPage: React.FC<SharedDashboardPageProps> = ({
   onOpenArchiveModal,
   onOpenBulkImportModal,
 }) => {
-  const [chartTab, setChartTab] = useState<'breakdown' | 'trends'>('breakdown');
+  const [chartTab, setChartTab] = useState<
+    'breakdown' | 'intensity' | 'trends'
+  >('breakdown');
 
   return (
     <section
@@ -58,6 +61,18 @@ export const LiveProgressPage: React.FC<SharedDashboardPageProps> = ({
               </button>
               <button
                 type="button"
+                data-testid="live-progress-subview-intensity"
+                onClick={() => setChartTab('intensity')}
+                className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full transition-colors cursor-pointer whitespace-nowrap ${
+                  chartTab === 'intensity'
+                    ? 'bg-white text-[#2F2B28] shadow-2xs'
+                    : 'text-[#6E665E] hover:text-[#2F2B28]'
+                }`}
+              >
+                Task Intensity
+              </button>
+              <button
+                type="button"
                 data-testid="live-progress-subview-trends"
                 onClick={() => setChartTab('trends')}
                 className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full transition-colors cursor-pointer whitespace-nowrap ${
@@ -80,26 +95,49 @@ export const LiveProgressPage: React.FC<SharedDashboardPageProps> = ({
           </div>
 
           {chartTab === 'breakdown' ? (
-            <LiveProgressBoard
-              detailedTasks={detailedTasks}
-              metrics={metrics}
-              activeTheme={activeTheme}
-              searchQuery={searchQuery}
-              archivedCount={archivedCount}
-              customCategories={customCategories}
-              onAddCustomCategory={onAddCustomCategory}
-              onRemoveCustomCategory={onRemoveCustomCategory}
-              onToggleDetailedTask={onToggleDetailedTask}
-              onCycleDetailedPriority={onCycleDetailedPriority}
-              onCycleDetailedStatus={onCycleDetailedStatus}
-              onCycleDetailedCategory={onCycleDetailedCategory}
-              onUpdateDetailedText={onUpdateDetailedText}
-              onArchiveCompletedTasks={onArchiveCompletedTasks}
-              onArchiveSingleDetailedTask={onArchiveSingleDetailedTask}
-              onOpenArchiveModal={onOpenArchiveModal}
-              onOpenBulkImportModal={onOpenBulkImportModal}
-              onSelectTheme={onSelectTheme}
-            />
+            <div className="flex-1 flex flex-col">
+              <LiveProgressBoard
+                detailedTasks={detailedTasks}
+                metrics={metrics}
+                activeTheme={activeTheme}
+                searchQuery={searchQuery}
+                archivedCount={archivedCount}
+                customCategories={customCategories}
+                onAddCustomCategory={onAddCustomCategory}
+                onRemoveCustomCategory={onRemoveCustomCategory}
+                onToggleDetailedTask={onToggleDetailedTask}
+                onCycleDetailedPriority={onCycleDetailedPriority}
+                onCycleDetailedStatus={onCycleDetailedStatus}
+                onCycleDetailedCategory={onCycleDetailedCategory}
+                onUpdateDetailedText={onUpdateDetailedText}
+                onArchiveCompletedTasks={onArchiveCompletedTasks}
+                onArchiveSingleDetailedTask={onArchiveSingleDetailedTask}
+                onOpenArchiveModal={onOpenArchiveModal}
+                onOpenBulkImportModal={onOpenBulkImportModal}
+                onSelectTheme={onSelectTheme}
+              />
+              <div className="px-3 sm:px-4 lg:px-5 pb-4 bg-[#FAF7F2]">
+                <WeeklyTaskIntensityHeatmap
+                  columns={columns}
+                  detailedTasks={detailedTasks}
+                  activeTheme={activeTheme}
+                  customCategories={customCategories}
+                />
+              </div>
+            </div>
+          ) : chartTab === 'intensity' ? (
+            <div className="p-3 sm:p-4 lg:p-5 bg-[#FAF7F2] flex-1 flex flex-col gap-3.5 sm:gap-4">
+              <WeeklyCompletionProgressBar
+                metrics={metrics}
+                activeTheme={activeTheme}
+              />
+              <WeeklyTaskIntensityHeatmap
+                columns={columns}
+                detailedTasks={detailedTasks}
+                activeTheme={activeTheme}
+                customCategories={customCategories}
+              />
+            </div>
           ) : (
             <div className="p-3 sm:p-4 flex-1 flex flex-col gap-3.5">
               <WeeklyCompletionProgressBar
@@ -111,6 +149,12 @@ export const LiveProgressPage: React.FC<SharedDashboardPageProps> = ({
                 selectedDate={selectedDate}
                 activeTheme={activeTheme}
               />
+              <WeeklyTaskIntensityHeatmap
+                columns={columns}
+                detailedTasks={detailedTasks}
+                activeTheme={activeTheme}
+                customCategories={customCategories}
+              />
             </div>
           )}
 
@@ -121,6 +165,9 @@ export const LiveProgressPage: React.FC<SharedDashboardPageProps> = ({
               </span>
               <span className="bg-[#FAE8CE] text-[#946016] font-bold text-xs px-4 py-1 rounded-full whitespace-nowrap">
                 Milestone badges
+              </span>
+              <span className="bg-[#E3EFF8] text-[#2B5B80] font-bold text-xs px-4 py-1 rounded-full whitespace-nowrap">
+                Weekly task intensity
               </span>
               <span className="bg-[#F5DFD0] text-[#B05C37] font-bold text-xs px-4 py-1 rounded-full whitespace-nowrap">
                 Completion ring
@@ -144,3 +191,4 @@ export const LiveProgressPage: React.FC<SharedDashboardPageProps> = ({
     </section>
   );
 };
+

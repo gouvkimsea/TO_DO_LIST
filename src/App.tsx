@@ -11,6 +11,7 @@ import {
   Minimize2,
   Moon,
   Search,
+  SlidersHorizontal,
   Sun,
   Volume2,
   VolumeX,
@@ -112,6 +113,7 @@ import { DownloadModal } from './components/DownloadModal';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import { ArchiveModal } from './components/ArchiveModal';
 import { BulkImportModal } from './components/BulkImportModal';
+import { TaskSearchOverlay } from './components/TaskSearchOverlay';
 import { DashboardPage } from './pages/DashboardPage';
 import { HowItWorksPage } from './pages/HowItWorksPage';
 import { DailyColumnsPage } from './pages/DailyColumnsPage';
@@ -250,6 +252,7 @@ export default function App() {
   }>({ open: false, tab: 'download' });
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState<boolean>(false);
   const [archiveModalOpen, setArchiveModalOpen] = useState<boolean>(false);
+  const [searchOverlayOpen, setSearchOverlayOpen] = useState<boolean>(false);
   const [bulkImportModalState, setBulkImportModalState] = useState<{
     open: boolean;
     dayId: string;
@@ -713,7 +716,10 @@ export default function App() {
           break;
         }
         case 'ESCAPE': {
-          if (archiveModalOpen) {
+          if (searchOverlayOpen) {
+            e.preventDefault();
+            setSearchOverlayOpen(false);
+          } else if (archiveModalOpen) {
             e.preventDefault();
             setArchiveModalOpen(false);
           } else if (shortcutsModalOpen) {
@@ -751,12 +757,18 @@ export default function App() {
         }
         case 'FOCUS_SEARCH': {
           e.preventDefault();
+          if (e.ctrlKey || e.metaKey) {
+            setSearchOverlayOpen((prev) => !prev);
+            break;
+          }
           const searchInput = document.querySelector<HTMLInputElement>(
             'input[data-testid="global-header-search-input"], input[data-shortcut-search]'
           );
           if (searchInput) {
             searchInput.focus();
             searchInput.select();
+          } else {
+            setSearchOverlayOpen(true);
           }
           break;
         }
@@ -808,6 +820,7 @@ export default function App() {
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [
+    searchOverlayOpen,
     archiveModalOpen,
     shortcutsModalOpen,
     modalState.open,
@@ -1640,12 +1653,12 @@ export default function App() {
                 </span>
               </div>
 
-              {/* Global Task Search Bar */}
+              {/* Global Task Search Bar + Multi-Filter Task Search Overlay Trigger */}
               <div
-                className="hidden md:flex items-center flex-1 max-w-sm mx-3"
+                className="hidden md:flex items-center gap-1.5 flex-1 max-w-md mx-3"
                 role="search"
               >
-                <div className="relative w-full flex items-center">
+                <div className="relative flex-1 flex items-center">
                   <Search
                     className="w-3.5 h-3.5 text-[#8A8279] absolute left-3 pointer-events-none"
                     aria-hidden="true"
@@ -1663,6 +1676,9 @@ export default function App() {
                         } else {
                           e.currentTarget.blur();
                         }
+                      } else if (e.key === 'Enter' && e.currentTarget.value.trim().length > 0) {
+                        e.preventDefault();
+                        setSearchOverlayOpen(true);
                       }
                     }}
                     placeholder="Search all tasks, categories, notes... (/)"
@@ -1693,9 +1709,31 @@ export default function App() {
                     </span>
                   )}
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSearchOverlayOpen(true)}
+                  aria-label="Open task search and multi-filter overlay (Ctrl+K)"
+                  aria-expanded={searchOverlayOpen}
+                  title="Filter & find tasks across all days and custom categories (Ctrl+K)"
+                  data-testid="open-task-search-overlay-btn"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold text-[#4A433C] hover:text-[#2F2B28] bg-white hover:bg-[#F4EFE6] border border-[#DDD5CB] shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <SlidersHorizontal className="w-3 h-3 text-[#B05C37] shrink-0" />
+                  <span>Filters</span>
+                </button>
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setSearchOverlayOpen(true)}
+                  aria-label="Open task search overlay"
+                  data-testid="mobile-open-task-search-overlay-btn"
+                  className="md:hidden inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold text-[#5A534C] hover:text-[#2F2B28] bg-[#F2EFE9] border border-[#E2D9CC] cursor-pointer"
+                >
+                  <Search className="w-3.5 h-3.5" />
+                </button>
                 <button
                   type="button"
                   onClick={() => void handleEnterPresentationMode()}
@@ -1850,6 +1888,29 @@ export default function App() {
             setBulkImportModalState((prev) => ({ ...prev, open: false }))
           }
           onBulkImport={handleBulkImportTasks}
+        />
+
+        <TaskSearchOverlay
+          isOpen={searchOverlayOpen}
+          onClose={() => setSearchOverlayOpen(false)}
+          columns={columns}
+          monthlyGoals={monthlyGoals}
+          yearlyGoals={yearlyGoals}
+          activeTheme={activeTheme}
+          searchQuery={searchQuery}
+          onSearchQueryChange={(q) => setSearchQuery(sanitizeTaskText(q, 120))}
+          customCategories={customCategories}
+          onAddCustomCategory={handleAddCustomCategory}
+          onToggleDailyTask={(dayId, taskId) =>
+            handleToggleDailyTask(dayId, taskId)
+          }
+          onCycleDailyPriority={handleCycleDailyPriority}
+          onCycleDailyCategory={handleCycleDailyCategory}
+          onToggleGoalTask={handleToggleGoalTask}
+          onCycleGoalPriority={handleCycleGoalPriority}
+          onCycleGoalCategory={handleCycleGoalCategory}
+          onNavigate={handleNavigate}
+          onSelectView={setActiveView}
         />
       </div>
     </PomodoroProvider>
