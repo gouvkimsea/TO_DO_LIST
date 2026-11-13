@@ -1916,5 +1916,283 @@ test('bulk import: bulkImportTasksToDayColumn adds multiple tasks at once to a s
   assert.equal(metricsAfter.totalTasks, 26);
 });
 
+test('visual trend indicator: calculateWeeklyTrendComparison detects increasing, decreasing, and flat completion rates vs previous week and generates sparkline points', async () => {
+  const { calculateWeeklyTrendComparison } = await import('./todoLogic');
 
+  // 1. Default baseline (41% last week) vs initial 45% this week -> Increasing (+4%)
+  const upTrend = calculateWeeklyTrendComparison({
+    currentPercentage: 45,
+  });
+  assert.equal(upTrend.currentPercentage, 45);
+  assert.equal(upTrend.previousWeekPercentage, 41);
+  assert.equal(upTrend.deltaPercentage, 4);
+  assert.equal(upTrend.direction, 'up');
+  assert.equal(upTrend.deltaBadgeText, '+4%');
+  assert.equal(
+    upTrend.comparisonSummary,
+    'Increasing (+4% vs 41% last week)'
+  );
+  assert.deepEqual(upTrend.sparklineRates, [35, 40, 41, 45]);
+  assert.equal(upTrend.sparklinePoints.length, 4);
+  assert.ok(upTrend.sparklinePolylinePoints.length > 0);
+  // Since 45% > 41%, the last sparkline point Y should be higher up (smaller SVG Y coordinate) than previous week
+  assert.ok(upTrend.sparklinePoints[3].y < upTrend.sparklinePoints[2].y);
 
+  // 2. Decreasing completion rate (36% vs 41% last week -> -5%)
+  const downTrend = calculateWeeklyTrendComparison({
+    currentPercentage: 36,
+    previousWeekPercentage: 41,
+  });
+  assert.equal(downTrend.deltaPercentage, -5);
+  assert.equal(downTrend.direction, 'down');
+  assert.equal(downTrend.deltaBadgeText, '-5%');
+  assert.equal(
+    downTrend.comparisonSummary,
+    'Decreasing (-5% vs 41% last week)'
+  );
+  assert.ok(downTrend.sparklinePoints[3].y > downTrend.sparklinePoints[2].y);
+
+  // 3. Flat completion rate (41% vs 41% last week -> 0%)
+  const flatTrend = calculateWeeklyTrendComparison({
+    currentPercentage: 41,
+    previousWeekPercentage: 41,
+  });
+  assert.equal(flatTrend.deltaPercentage, 0);
+  assert.equal(flatTrend.direction, 'flat');
+  assert.equal(flatTrend.deltaBadgeText, '0%');
+  assert.equal(
+    flatTrend.comparisonSummary,
+    'Steady (same as 41% last week)'
+  );
+  assert.equal(
+    flatTrend.sparklinePoints[3].y,
+    flatTrend.sparklinePoints[2].y
+  );
+});
+
+test('milestone badge system: evaluateWeeklyMilestoneBadges and detectNewlyUnlockedMilestoneBadges award digital badges at 25%, 50%, 75%, and 100% thresholds', async () => {
+  const {
+    evaluateWeeklyMilestoneBadges,
+    detectNewlyUnlockedMilestoneBadges,
+  } = await import('./todoLogic');
+
+  // 1. At initial 10 of 22 tasks (45%): 25% badge is unlocked, 50%/75%/100% are locked
+  const eval45 = evaluateWeeklyMilestoneBadges({
+    completedTasks: 10,
+    totalTasks: 22,
+  });
+  assert.equal(eval45.currentPercentage, 45);
+  assert.equal(eval45.unlockedCount, 1);
+  assert.equal(eval45.totalBadges, 4);
+  assert.equal(eval45.highestUnlockedBadge?.threshold, 25);
+  assert.equal(eval45.highestUnlockedBadge?.title, 'Momentum Starter');
+  assert.equal(eval45.nextMilestoneBadge?.threshold, 50);
+  assert.equal(eval45.nextMilestoneBadge?.title, 'Halfway Hero');
+  assert.equal(eval45.nextMilestoneBadge?.tasksRemainingToUnlock, 1);
+  assert.equal(eval45.nextMilestoneBadge?.statusText, '1 task to unlock');
+
+  // 2. Completing 1 more task -> 11 of 22 (50%): unlocks 50% Halfway Hero badge
+  const eval50 = evaluateWeeklyMilestoneBadges({
+    completedTasks: 11,
+    totalTasks: 22,
+  });
+  assert.equal(eval50.currentPercentage, 50);
+  assert.equal(eval50.unlockedCount, 2);
+  assert.equal(eval50.highestUnlockedBadge?.threshold, 50);
+  assert.equal(eval50.highestUnlockedBadge?.title, 'Halfway Hero');
+  assert.equal(eval50.nextMilestoneBadge?.threshold, 75);
+  assert.equal(eval50.nextMilestoneBadge?.title, 'Power Finisher');
+  assert.equal(eval50.nextMilestoneBadge?.tasksRemainingToUnlock, 6);
+
+  // Detect newly unlocked badge between 10/22 (45%) and 11/22 (50%)
+  const newlyUnlocked50 = detectNewlyUnlockedMilestoneBadges(
+    { completedTasks: 10, totalTasks: 22 },
+    { completedTasks: 11, totalTasks: 22 }
+  );
+  assert.equal(newlyUnlocked50.length, 1);
+  assert.equal(newlyUnlocked50[0].threshold, 50);
+  assert.equal(newlyUnlocked50[0].title, 'Halfway Hero');
+
+  // 3. At 17 of 22 tasks (77%): unlocks 75% Power Finisher badge
+  const eval77 = evaluateWeeklyMilestoneBadges({
+    completedTasks: 17,
+    totalTasks: 22,
+  });
+  assert.equal(eval77.currentPercentage, 77);
+  assert.equal(eval77.unlockedCount, 3);
+  assert.equal(eval77.highestUnlockedBadge?.threshold, 75);
+  assert.equal(eval77.highestUnlockedBadge?.title, 'Power Finisher');
+  assert.equal(eval77.nextMilestoneBadge?.threshold, 100);
+  assert.equal(eval77.nextMilestoneBadge?.tasksRemainingToUnlock, 5);
+
+  // 4. At 22 of 22 tasks (100%): unlocks 100% Week Champion badge, all 4 earned
+  const eval100 = evaluateWeeklyMilestoneBadges({
+    completedTasks: 22,
+    totalTasks: 22,
+  });
+  assert.equal(eval100.currentPercentage, 100);
+  assert.equal(eval100.unlockedCount, 4);
+  assert.equal(eval100.highestUnlockedBadge?.threshold, 100);
+  assert.equal(eval100.highestUnlockedBadge?.title, 'Week Champion');
+  assert.equal(eval100.nextMilestoneBadge, null);
+
+  // 5. Empty week (0 total tasks) locks all badges safely
+  const evalEmpty = evaluateWeeklyMilestoneBadges({
+    completedTasks: 0,
+    totalTasks: 0,
+  });
+  assert.equal(evalEmpty.unlockedCount, 0);
+  assert.equal(evalEmpty.badges[0].statusText, 'Add tasks to unlock');
+});
+
+test('custom task categories: addCustomCategory, removeCustomCategory, getCategoryBadgeStyle, cycleCategory, inline #customtag parsing, metrics, and persistence roundtrip', async () => {
+  const {
+    CATEGORY_COLOR_IDS,
+    CUSTOM_CATEGORY_COLOR_PRESETS,
+    addCustomCategory,
+    removeCustomCategory,
+    getAllCategories,
+    getCategoryBadgeStyle,
+    resetRuntimeCustomCategoriesForTest,
+    setRuntimeCustomCategories,
+    parseQuickTaskTag,
+    countTasksByCategory,
+    syncDailyTaskCategory,
+    syncDetailedTaskCategory,
+  } = await import('./todoLogic');
+
+  resetRuntimeCustomCategoriesForTest();
+  assert.equal(CATEGORY_COLOR_IDS.length, 8);
+  assert.equal(Object.keys(CUSTOM_CATEGORY_COLOR_PRESETS).length, 8);
+
+  // 1. Add custom categories with explicit color presets
+  const step1 = addCustomCategory([], 'Design', 'indigo');
+  assert.ok(step1.addedCategory);
+  assert.equal(step1.addedCategory?.name, 'Design');
+  assert.equal(step1.addedCategory?.colorId, 'indigo');
+  assert.equal(step1.nextCustomCategories.length, 1);
+
+  const step2 = addCustomCategory(
+    step1.nextCustomCategories,
+    '#Urgent',
+    'rose'
+  );
+  assert.ok(step2.addedCategory);
+  assert.equal(step2.addedCategory?.name, 'Urgent');
+  assert.equal(step2.addedCategory?.colorId, 'rose');
+  assert.equal(step2.nextCustomCategories.length, 2);
+
+  // Updating an existing custom category updates its color preset without duplicating
+  const updatedColor = addCustomCategory(
+    step2.nextCustomCategories,
+    'design',
+    'teal'
+  );
+  assert.equal(updatedColor.nextCustomCategories.length, 2);
+  assert.equal(updatedColor.addedCategory?.colorId, 'teal');
+
+  const builtInDup = addCustomCategory(
+    step2.nextCustomCategories,
+    'Work',
+    'amber'
+  );
+  assert.equal(builtInDup.addedCategory, null);
+
+  // 2. getAllCategories & cycleCategory include custom categories
+  const customList = step2.nextCustomCategories;
+  const allCats = getAllCategories(customList);
+  assert.deepEqual(allCats, [
+    'Work',
+    'Personal',
+    'Health',
+    'Finance',
+    'Home',
+    'Growth',
+    'Design',
+    'Urgent',
+  ]);
+  assert.equal(cycleCategory('Growth', customList), 'Design');
+  assert.equal(cycleCategory('Design', customList), 'Urgent');
+  assert.equal(cycleCategory('Urgent', customList), 'Work');
+
+  // 3. getCategoryBadgeStyle returns custom color palette
+  const designStyle = getCategoryBadgeStyle('Design', customList);
+  const indigoPreset = CUSTOM_CATEGORY_COLOR_PRESETS.indigo;
+  assert.equal(designStyle.bg, indigoPreset.bg);
+  assert.equal(designStyle.text, indigoPreset.text);
+  assert.equal(designStyle.border, indigoPreset.border);
+
+  // 4. syncDailyTaskCategory and syncDetailedTaskCategory support explicit custom category
+  const cols = createInitialWeekColumns();
+  const detailed = createInitialDetailedTasks();
+  const syncedDaily = syncDailyTaskCategory(
+    cols,
+    detailed,
+    'mon',
+    'mon-3',
+    'Design',
+    customList
+  );
+  assert.equal(syncedDaily.nextColumns[0].tasks[2].category, 'Design');
+  assert.equal(syncedDaily.nextDetailedTasks[0].category, 'Design');
+
+  const syncedDetailed = syncDetailedTaskCategory(
+    syncedDaily.nextDetailedTasks,
+    syncedDaily.nextColumns,
+    'dt-1',
+    'Urgent',
+    customList
+  );
+  assert.equal(syncedDetailed.nextDetailedTasks[0].category, 'Urgent');
+  assert.equal(syncedDetailed.nextColumns[0].tasks[2].category, 'Urgent');
+
+  // 5. countTasksByCategory and calculateDashboardMetrics include custom categories
+  const counts = countTasksByCategory(
+    syncedDetailed.nextDetailedTasks,
+    customList
+  );
+  assert.equal(counts.Urgent, 1);
+  assert.equal(counts.Design, 0);
+
+  const metrics = calculateDashboardMetrics(
+    syncedDetailed.nextColumns,
+    syncedDetailed.nextDetailedTasks,
+    customList
+  );
+  assert.ok(metrics.byCategory.Urgent >= 1);
+
+  // 6. Inline #customtag parsing registers custom category automatically
+  setRuntimeCustomCategories(customList);
+  const inlineParsed = parseQuickTaskTag(
+    'Prepare sprint demo deck #marketing #weekly'
+  );
+  assert.equal(inlineParsed.cleanText, 'Prepare sprint demo deck');
+  assert.equal(inlineParsed.category, 'Marketing');
+  assert.equal(inlineParsed.recurring, 'weekly');
+  assert.equal(inlineParsed.hadInlineTag, true);
+  assert.equal(isValidCategory('Marketing'), true);
+
+  // 7. Persistence roundtrip preserves customCategories and task custom categories
+  const rawSaved = JSON.stringify({
+    columns: syncedDetailed.nextColumns,
+    detailedTasks: syncedDetailed.nextDetailedTasks,
+    monthlyGoals: [],
+    yearlyGoals: [],
+    archivedTasks: [],
+    activeTheme: 'terracotta',
+    customCategories: customList,
+  });
+  const restored = parsePersistedDashboardState(rawSaved);
+  assert.equal(restored.customCategories.length, 2);
+  assert.equal(restored.customCategories[0].name, 'Design');
+  assert.equal(restored.customCategories[0].colorId, 'indigo');
+  assert.equal(restored.columns[0].tasks[2].category, 'Urgent');
+  assert.equal(restored.detailedTasks[0].category, 'Urgent');
+
+  // 8. removeCustomCategory removes a custom tag cleanly
+  const afterRemove = removeCustomCategory(customList, 'Design');
+  assert.equal(afterRemove.length, 1);
+  assert.equal(afterRemove[0].name, 'Urgent');
+
+  resetRuntimeCustomCategoriesForTest();
+});

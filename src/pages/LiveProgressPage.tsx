@@ -16,6 +16,9 @@ export const LiveProgressPage: React.FC<SharedDashboardPageProps> = ({
   selectedDate,
   searchQuery,
   archivedCount,
+  customCategories,
+  onAddCustomCategory,
+  onRemoveCustomCategory,
   onSelectTheme,
   onToggleDetailedTask,
   onCycleDetailedPriority,
@@ -43,6 +46,7 @@ export const LiveProgressPage: React.FC<SharedDashboardPageProps> = ({
             <div className="inline-flex items-center bg-[#E4DDD3] p-0.5 rounded-full">
               <button
                 type="button"
+                data-testid="live-progress-subview-breakdown"
                 onClick={() => setChartTab('breakdown')}
                 className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full transition-colors cursor-pointer whitespace-nowrap ${
                   chartTab === 'breakdown'
@@ -54,6 +58,7 @@ export const LiveProgressPage: React.FC<SharedDashboardPageProps> = ({
               </button>
               <button
                 type="button"
+                data-testid="live-progress-subview-trends"
                 onClick={() => setChartTab('trends')}
                 className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full transition-colors cursor-pointer whitespace-nowrap ${
                   chartTab === 'trends'
@@ -81,6 +86,9 @@ export const LiveProgressPage: React.FC<SharedDashboardPageProps> = ({
               activeTheme={activeTheme}
               searchQuery={searchQuery}
               archivedCount={archivedCount}
+              customCategories={customCategories}
+              onAddCustomCategory={onAddCustomCategory}
+              onRemoveCustomCategory={onRemoveCustomCategory}
               onToggleDetailedTask={onToggleDetailedTask}
               onCycleDetailedPriority={onCycleDetailedPriority}
               onCycleDetailedStatus={onCycleDetailedStatus}
@@ -110,6 +118,9 @@ export const LiveProgressPage: React.FC<SharedDashboardPageProps> = ({
             <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3">
               <span className="bg-[#F5DFD0] text-[#B05C37] font-bold text-xs px-4 py-1 rounded-full whitespace-nowrap">
                 Live completion bar
+              </span>
+              <span className="bg-[#FAE8CE] text-[#946016] font-bold text-xs px-4 py-1 rounded-full whitespace-nowrap">
+                Milestone badges
               </span>
               <span className="bg-[#F5DFD0] text-[#B05C37] font-bold text-xs px-4 py-1 rounded-full whitespace-nowrap">
                 Completion ring

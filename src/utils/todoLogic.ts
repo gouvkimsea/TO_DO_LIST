@@ -3,13 +3,135 @@ export type TaskStatus = 'To Do' | 'In Progress' | 'Done';
 export type ThemeId = 'terracotta' | 'candy' | 'lavender' | 'neutral';
 export type ViewMode = 'week' | 'month' | 'year';
 
-export type TaskCategory =
+export type DefaultTaskCategory =
   | 'Work'
   | 'Personal'
   | 'Health'
   | 'Finance'
   | 'Home'
   | 'Growth';
+
+export type TaskCategory = DefaultTaskCategory | (string & {});
+
+export type CategoryColorId =
+  | 'terracotta'
+  | 'lavender'
+  | 'sage'
+  | 'amber'
+  | 'sky'
+  | 'rose'
+  | 'teal'
+  | 'indigo';
+
+export const CATEGORY_COLOR_IDS: readonly CategoryColorId[] = [
+  'terracotta',
+  'lavender',
+  'sage',
+  'amber',
+  'sky',
+  'rose',
+  'teal',
+  'indigo',
+] as const;
+
+export interface CategoryBadgeStyle {
+  bg: string;
+  text: string;
+  border: string;
+}
+
+export interface CustomCategoryColorPreset extends CategoryBadgeStyle {
+  id: CategoryColorId;
+  label: string;
+  swatch: string;
+}
+
+export const CUSTOM_CATEGORY_COLOR_PRESETS: Record<
+  CategoryColorId,
+  CustomCategoryColorPreset
+> = {
+  terracotta: {
+    id: 'terracotta',
+    label: 'Terracotta',
+    bg: '#FCEADE',
+    text: '#9A4E28',
+    border: '#F0CFB8',
+    swatch: '#C87D55',
+  },
+  lavender: {
+    id: 'lavender',
+    label: 'Lavender',
+    bg: '#EAE4F7',
+    text: '#564385',
+    border: '#D5C9EE',
+    swatch: '#7E6BB3',
+  },
+  sage: {
+    id: 'sage',
+    label: 'Sage Green',
+    bg: '#DEF0E5',
+    text: '#2D6A46',
+    border: '#BFE0CC',
+    swatch: '#4B9468',
+  },
+  amber: {
+    id: 'amber',
+    label: 'Warm Amber',
+    bg: '#FBF0D4',
+    text: '#876015',
+    border: '#EFE0B3',
+    swatch: '#C9962C',
+  },
+  sky: {
+    id: 'sky',
+    label: 'Ocean Sky',
+    bg: '#E3EFF8',
+    text: '#2B5B80',
+    border: '#C7DFEF',
+    swatch: '#4A88B5',
+  },
+  rose: {
+    id: 'rose',
+    label: 'Dusty Rose',
+    bg: '#F7E3EC',
+    text: '#8C3B61',
+    border: '#EBC5D6',
+    swatch: '#BA5B87',
+  },
+  teal: {
+    id: 'teal',
+    label: 'Deep Teal',
+    bg: '#DFF2F0',
+    text: '#1F635E',
+    border: '#B9E2DE',
+    swatch: '#358F88',
+  },
+  indigo: {
+    id: 'indigo',
+    label: 'Slate Indigo',
+    bg: '#E5E8F8',
+    text: '#36438A',
+    border: '#C6CEF0',
+    swatch: '#5665B8',
+  },
+};
+
+export interface CustomCategoryDefinition {
+  name: string;
+  colorId: CategoryColorId;
+  bg: string;
+  text: string;
+  border: string;
+}
+
+export const DEFAULT_TASK_CATEGORIES: readonly DefaultTaskCategory[] = [
+  'Work',
+  'Personal',
+  'Health',
+  'Finance',
+  'Home',
+  'Growth',
+] as const;
 
 export const TASK_CATEGORIES: TaskCategory[] = [
   'Work',
@@ -20,10 +142,7 @@ export const TASK_CATEGORIES: TaskCategory[] = [
   'Growth',
 ];
 
-export const CATEGORY_BADGE_STYLES: Record<
-  TaskCategory,
-  { bg: string; text: string; border: string }
-> = {
+export const CATEGORY_BADGE_STYLES: Record<string, CategoryBadgeStyle> = {
   Work: { bg: '#FCEADE', text: '#9A4E28', border: '#F0CFB8' },
   Personal: { bg: '#EAE4F7', text: '#564385', border: '#D5C9EE' },
   Health: { bg: '#DEF0E5', text: '#2D6A46', border: '#BFE0CC' },
@@ -31,6 +150,243 @@ export const CATEGORY_BADGE_STYLES: Record<
   Home: { bg: '#E3EFF8', text: '#2B5B80', border: '#C7DFEF' },
   Growth: { bg: '#F7E3EC', text: '#8C3B61', border: '#EBC5D6' },
 };
+
+let runtimeCustomCategories: CustomCategoryDefinition[] = [];
+
+export function isValidCategoryColorId(val: unknown): val is CategoryColorId {
+  return (
+    typeof val === 'string' &&
+    (CATEGORY_COLOR_IDS as readonly string[]).includes(val)
+  );
+}
+
+export function resolveDeterministicColorId(name: string): CategoryColorId {
+  const clean = (name || '').trim().toLowerCase();
+  if (!clean) return 'terracotta';
+  let hash = 0;
+  for (let i = 0; i < clean.length; i++) {
+    hash = (hash * 31 + clean.charCodeAt(i)) >>> 0;
+  }
+  return CATEGORY_COLOR_IDS[hash % CATEGORY_COLOR_IDS.length];
+}
+
+export function sanitizeCustomCategoryName(rawName: string): string {
+  if (typeof rawName !== 'string') return '';
+  const stripped = rawName
+    .replace(/[\u0000-\u001F\u007F]/g, '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/^#+/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 20);
+  if (!stripped || stripped === '—') return '';
+  if (stripped.toLowerCase() === 'all') return '';
+
+  // Match canonical casing if it matches a built-in category
+  const matchedDefault = DEFAULT_TASK_CATEGORIES.find(
+    (c) => c.toLowerCase() === stripped.toLowerCase()
+  );
+  if (matchedDefault) return matchedDefault;
+
+  // Capitalize first letter if all lowercase
+  if (stripped === stripped.toLowerCase()) {
+    return stripped.charAt(0).toUpperCase() + stripped.slice(1);
+  }
+  return stripped;
+}
+
+export function createCustomCategoryDefinition(
+  rawName: string,
+  colorId?: CategoryColorId
+): CustomCategoryDefinition | null {
+  const cleanName = sanitizeCustomCategoryName(rawName);
+  if (!cleanName) return null;
+
+  const resolvedColorId: CategoryColorId =
+    colorId && isValidCategoryColorId(colorId)
+      ? colorId
+      : resolveDeterministicColorId(cleanName);
+  const preset = CUSTOM_CATEGORY_COLOR_PRESETS[resolvedColorId];
+
+  const definition: CustomCategoryDefinition = {
+    name: cleanName,
+    colorId: resolvedColorId,
+    bg: preset.bg,
+    text: preset.text,
+    border: preset.border,
+  };
+
+  if (
+    !DEFAULT_TASK_CATEGORIES.some(
+      (c) => c.toLowerCase() === cleanName.toLowerCase()
+    )
+  ) {
+    CATEGORY_BADGE_STYLES[cleanName] = {
+      bg: definition.bg,
+      text: definition.text,
+      border: definition.border,
+    };
+  }
+
+  return definition;
+}
+
+export function setRuntimeCustomCategories(
+  categories: readonly CustomCategoryDefinition[]
+): void {
+  runtimeCustomCategories = [];
+  for (const item of categories) {
+    if (!item || typeof item.name !== 'string') continue;
+    const def = createCustomCategoryDefinition(item.name, item.colorId);
+    if (
+      def &&
+      ! DEFAULT_TASK_CATEGORIES.some(
+        (c) => c.toLowerCase() === def.name.toLowerCase()
+      ) &&
+      !runtimeCustomCategories.some(
+        (c) => c.name.toLowerCase() === def.name.toLowerCase()
+      )
+    ) {
+      runtimeCustomCategories.push(def);
+    }
+  }
+}
+
+export function getRuntimeCustomCategories(): CustomCategoryDefinition[] {
+  return [...runtimeCustomCategories];
+}
+
+export function resetRuntimeCustomCategoriesForTest(): void {
+  for (const custom of runtimeCustomCategories) {
+    if (
+      !DEFAULT_TASK_CATEGORIES.some(
+        (c) => c.toLowerCase() === custom.name.toLowerCase()
+      )
+    ) {
+      delete CATEGORY_BADGE_STYLES[custom.name];
+    }
+  }
+  runtimeCustomCategories = [];
+}
+
+export function addCustomCategory(
+  customCategories: readonly CustomCategoryDefinition[],
+  rawName: string,
+  colorId?: CategoryColorId
+): {
+  nextCustomCategories: CustomCategoryDefinition[];
+  addedCategory: CustomCategoryDefinition | null;
+} {
+  const def = createCustomCategoryDefinition(rawName, colorId);
+  if (!def) {
+    return {
+      nextCustomCategories: [...customCategories],
+      addedCategory: null,
+    };
+  }
+
+  // If it matches a built-in category name, return existing custom list without duplicating built-in
+  if (
+    DEFAULT_TASK_CATEGORIES.some(
+      (c) => c.toLowerCase() === def.name.toLowerCase()
+    )
+  ) {
+    return {
+      nextCustomCategories: [...customCategories],
+      addedCategory: null,
+    };
+  }
+
+  const existingIdx = customCategories.findIndex(
+    (c) => c.name.toLowerCase() === def.name.toLowerCase()
+  );
+
+  let nextCustomCategories: CustomCategoryDefinition[];
+  if (existingIdx !== -1) {
+    nextCustomCategories = customCategories.map((c, idx) =>
+      idx === existingIdx ? def : c
+    );
+  } else {
+    nextCustomCategories = [...customCategories, def];
+  }
+
+  setRuntimeCustomCategories(nextCustomCategories);
+  return {
+    nextCustomCategories,
+    addedCategory: def,
+  };
+}
+
+export function removeCustomCategory(
+  customCategories: readonly CustomCategoryDefinition[],
+  categoryName: string
+): CustomCategoryDefinition[] {
+  const target = (categoryName || '').trim().toLowerCase();
+  const next = customCategories.filter(
+    (c) => c.name.toLowerCase() !== target
+  );
+  setRuntimeCustomCategories(next);
+  return next;
+}
+
+export function getAllCategories(
+  customCategories?: readonly CustomCategoryDefinition[]
+): TaskCategory[] {
+  const sourceCustom = customCategories ?? runtimeCustomCategories;
+  const result: TaskCategory[] = [...TASK_CATEGORIES];
+  for (const item of sourceCustom) {
+    if (
+      item?.name &&
+      !result.some((existing) => existing.toLowerCase() === item.name.toLowerCase())
+    ) {
+      result.push(item.name);
+    }
+  }
+  return result;
+}
+
+export function getCategoryBadgeStyle(
+  category: TaskCategory,
+  customCategories?: readonly CustomCategoryDefinition[],
+  customColor?: CategoryColorId
+): CategoryBadgeStyle {
+  if (customColor && isValidCategoryColorId(customColor)) {
+    const preset = CUSTOM_CATEGORY_COLOR_PRESETS[customColor];
+    return { bg: preset.bg, text: preset.text, border: preset.border };
+  }
+
+  const clean = (category || 'Work').trim();
+  const list = customCategories ?? runtimeCustomCategories;
+  const matchedCustom = list.find(
+    (c) => c.name.toLowerCase() === clean.toLowerCase()
+  );
+  if (matchedCustom) {
+    return {
+      bg: matchedCustom.bg,
+      text: matchedCustom.text,
+      border: matchedCustom.border,
+    };
+  }
+
+  if (CATEGORY_BADGE_STYLES[clean]) {
+    return CATEGORY_BADGE_STYLES[clean];
+  }
+
+  const matchedDefaultKey = DEFAULT_TASK_CATEGORIES.find(
+    (c) => c.toLowerCase() === clean.toLowerCase()
+  );
+  if (matchedDefaultKey && CATEGORY_BADGE_STYLES[matchedDefaultKey]) {
+    return CATEGORY_BADGE_STYLES[matchedDefaultKey];
+  }
+
+  const fallbackColorId = resolveDeterministicColorId(clean);
+  const preset = CUSTOM_CATEGORY_COLOR_PRESETS[fallbackColorId];
+  return {
+    bg: preset.bg,
+    text: preset.text,
+    border: preset.border,
+  };
+}
 
 export type RecurringInterval = 'none' | 'daily' | 'weekly' | 'monthly';
 
@@ -98,6 +454,7 @@ export interface DailyTask {
   priority: Priority;
   status: TaskStatus;
   category: TaskCategory;
+  customColor?: CategoryColorId;
   notes?: string;
   recurring?: RecurringInterval;
 }
@@ -117,6 +474,7 @@ export interface DetailedTask {
   priority: Priority;
   status: TaskStatus;
   category: TaskCategory;
+  customColor?: CategoryColorId;
   recurring?: RecurringInterval;
 }
 
@@ -126,6 +484,7 @@ export interface ArchivedTask {
   text: string;
   priority: Priority;
   category: TaskCategory;
+  customColor?: CategoryColorId;
   notes?: string;
   recurring?: RecurringInterval;
   sourceType: 'daily' | 'detailed';
@@ -229,10 +588,14 @@ export function cycleStatus(current: TaskStatus): TaskStatus {
   return 'To Do';
 }
 
-export function cycleCategory(current: TaskCategory): TaskCategory {
-  const idx = TASK_CATEGORIES.indexOf(current);
-  if (idx === -1) return 'Work';
-  return TASK_CATEGORIES[(idx + 1) % TASK_CATEGORIES.length];
+export function cycleCategory(
+  current: TaskCategory,
+  customCategories?: readonly CustomCategoryDefinition[]
+): TaskCategory {
+  const allCategories = getAllCategories(customCategories);
+  const idx = allCategories.indexOf(current);
+  if (idx === -1) return allCategories[0] ?? 'Work';
+  return allCategories[(idx + 1) % allCategories.length];
 }
 
 export function cycleRecurringInterval(
@@ -310,7 +673,8 @@ export interface DashboardMetrics {
 
 export function calculateDashboardMetrics(
   columns: DayColumn[],
-  extraTasks: DetailedTask[] = []
+  extraTasks: DetailedTask[] = [],
+  customCategories?: readonly CustomCategoryDefinition[]
 ): DashboardMetrics {
   const dailyProgress = columns.map((col) => {
     const stats = calculateDayProgress(col.tasks);
@@ -362,12 +726,20 @@ export function calculateDashboardMetrics(
     Home: 0,
     Growth: 0,
   };
+  for (const catName of getAllCategories(customCategories)) {
+    if (byCategory[catName] === undefined) {
+      byCategory[catName] = 0;
+    }
+  }
 
   for (const t of allTasks) {
     byPriority[t.priority] = (byPriority[t.priority] || 0) + 1;
     byStatus[t.status] = (byStatus[t.status] || 0) + 1;
+    const rawCat = typeof t.category === 'string' ? t.category.trim() : '';
     const cat: TaskCategory =
-      t.category && TASK_CATEGORIES.includes(t.category) ? t.category : 'Work';
+      rawCat && (isValidCategory(rawCat, customCategories) || sanitizeCustomCategoryName(rawCat).length > 0)
+        ? (isValidCategory(rawCat, customCategories) ? rawCat : sanitizeCustomCategoryName(rawCat))
+        : 'Work';
     byCategory[cat] = (byCategory[cat] || 0) + 1;
   }
 
@@ -868,16 +1240,21 @@ export function syncDetailedTaskCategory(
   detailedTasks: DetailedTask[],
   columns: DayColumn[],
   targetDetailedTaskId: string,
-  explicitCategory?: TaskCategory
+  explicitCategory?: TaskCategory,
+  customCategories?: readonly CustomCategoryDefinition[]
 ): { nextDetailedTasks: DetailedTask[]; nextColumns: DayColumn[] } {
   let updatedCategory: TaskCategory = 'Work';
 
   const nextDetailedTasks = detailedTasks.map((t) => {
     if (t.id !== targetDetailedTaskId) return t;
     const nextCat =
-      explicitCategory && isValidCategory(explicitCategory)
-        ? explicitCategory
-        : cycleCategory(t.category);
+      explicitCategory &&
+      (isValidCategory(explicitCategory, customCategories) ||
+        sanitizeCustomCategoryName(explicitCategory).length > 0)
+        ? isValidCategory(explicitCategory, customCategories)
+          ? explicitCategory
+          : sanitizeCustomCategoryName(explicitCategory)
+        : cycleCategory(t.category, customCategories);
     updatedCategory = nextCat;
     return { ...t, category: nextCat };
   });
@@ -944,7 +1321,8 @@ export function syncDailyTaskCategory(
   detailedTasks: DetailedTask[],
   dayId: string,
   targetDailyTaskId: string,
-  explicitCategory?: TaskCategory
+  explicitCategory?: TaskCategory,
+  customCategories?: readonly CustomCategoryDefinition[]
 ): { nextColumns: DayColumn[]; nextDetailedTasks: DetailedTask[] } {
   let updatedCategory: TaskCategory = 'Work';
 
@@ -955,9 +1333,13 @@ export function syncDailyTaskCategory(
       tasks: col.tasks.map((task) => {
         if (task.id !== targetDailyTaskId) return task;
         const nextCat =
-          explicitCategory && isValidCategory(explicitCategory)
-            ? explicitCategory
-            : cycleCategory(task.category);
+          explicitCategory &&
+          (isValidCategory(explicitCategory, customCategories) ||
+            sanitizeCustomCategoryName(explicitCategory).length > 0)
+            ? isValidCategory(explicitCategory, customCategories)
+              ? explicitCategory
+              : sanitizeCustomCategoryName(explicitCategory)
+            : cycleCategory(task.category, customCategories);
         updatedCategory = nextCat;
         return { ...task, category: nextCat };
       }),
@@ -1115,12 +1497,22 @@ export function parseQuickTaskTag(
 
   stripped = stripped
     .replace(
-      /(?:^|\s)#(work|personal|health|finance|home|growth)\b/gi,
+      /(?:^|\s)#([a-zA-Z][a-zA-Z0-9_-]{1,19})\b/g,
       (_match, tagWord: string) => {
-        const normalized =
-          tagWord.charAt(0).toUpperCase() + tagWord.slice(1).toLowerCase();
-        if (isValidCategory(normalized)) {
-          detectedCategory = normalized;
+        const sanitizedTag = sanitizeCustomCategoryName(tagWord);
+        if (sanitizedTag) {
+          if (
+            !(DEFAULT_TASK_CATEGORIES as readonly string[]).includes(
+              sanitizedTag
+            )
+          ) {
+            const added = addCustomCategory(
+              getRuntimeCustomCategories(),
+              sanitizedTag
+            );
+            setRuntimeCustomCategories(added.nextCustomCategories);
+          }
+          detectedCategory = sanitizedTag;
         }
         return ' ';
       }
@@ -2047,7 +2439,8 @@ export function filterDayColumnsByCategory(
 }
 
 export function countTasksByCategory(
-  tasks: Array<{ text: string; category: TaskCategory }>
+  tasks: Array<{ text: string; category: TaskCategory }>,
+  customCategories?: readonly CustomCategoryDefinition[]
 ): Record<TaskCategory, number> {
   const counts: Record<TaskCategory, number> = {
     Work: 0,
@@ -2057,9 +2450,20 @@ export function countTasksByCategory(
     Home: 0,
     Growth: 0,
   };
+  for (const catName of getAllCategories(customCategories)) {
+    if (counts[catName] === undefined) {
+      counts[catName] = 0;
+    }
+  }
   for (const t of tasks) {
     if (t.text.trim().length === 0 || t.text.trim() === '—') continue;
-    const cat = isValidCategory(t.category) ? t.category : 'Work';
+    const rawCat = typeof t.category === 'string' ? t.category.trim() : '';
+    const cat =
+      rawCat && (isValidCategory(rawCat, customCategories) || sanitizeCustomCategoryName(rawCat).length > 0)
+        ? isValidCategory(rawCat, customCategories)
+          ? rawCat
+          : sanitizeCustomCategoryName(rawCat)
+        : 'Work';
     counts[cat] = (counts[cat] || 0) + 1;
   }
   return counts;
@@ -2084,7 +2488,8 @@ export function countMatchingTasks(
   columns: DayColumn[],
   monthlyGoals: DetailedTask[],
   yearlyGoals: DetailedTask[],
-  query: string
+  query: string,
+  customCategories?: readonly CustomCategoryDefinition[]
 ): SearchMatchStats {
   const normalized = query.trim();
   const byCategory: Record<TaskCategory, number> = {
@@ -2095,12 +2500,25 @@ export function countMatchingTasks(
     Home: 0,
     Growth: 0,
   };
+  for (const catName of getAllCategories(customCategories)) {
+    if (byCategory[catName] === undefined) {
+      byCategory[catName] = 0;
+    }
+  }
   const byField = {
     name: 0,
     category: 0,
     notes: 0,
     priority: 0,
     status: 0,
+  };
+
+  const resolveTaskCat = (rawCategory: unknown): TaskCategory => {
+    const raw = typeof rawCategory === 'string' ? rawCategory.trim() : '';
+    if (!raw) return 'Work';
+    if (isValidCategory(raw, customCategories)) return raw;
+    const sanitized = sanitizeCustomCategoryName(raw);
+    return sanitized || 'Work';
   };
 
   if (!normalized) {
@@ -2121,20 +2539,20 @@ export function countMatchingTasks(
     for (const col of columns) {
       for (const t of col.tasks) {
         if (t.text.trim().length > 0 && t.text.trim() !== '—') {
-          const cat = isValidCategory(t.category) ? t.category : 'Work';
+          const cat = resolveTaskCat(t.category);
           byCategory[cat] = (byCategory[cat] || 0) + 1;
         }
       }
     }
     for (const t of monthlyGoals) {
       if (t.text.trim().length > 0 && t.text.trim() !== '—') {
-        const cat = isValidCategory(t.category) ? t.category : 'Work';
+        const cat = resolveTaskCat(t.category);
         byCategory[cat] = (byCategory[cat] || 0) + 1;
       }
     }
     for (const t of yearlyGoals) {
       if (t.text.trim().length > 0 && t.text.trim() !== '—') {
-        const cat = isValidCategory(t.category) ? t.category : 'Work';
+        const cat = resolveTaskCat(t.category);
         byCategory[cat] = (byCategory[cat] || 0) + 1;
       }
     }
@@ -2155,7 +2573,7 @@ export function countMatchingTasks(
       const match = getTaskMatchDetail(t, normalized);
       if (match.matches) {
         weeklyMatches++;
-        const cat = isValidCategory(t.category) ? t.category : 'Work';
+        const cat = resolveTaskCat(t.category);
         byCategory[cat] = (byCategory[cat] || 0) + 1;
         if (match.field && byField[match.field] !== undefined) {
           byField[match.field]++;
@@ -2169,7 +2587,7 @@ export function countMatchingTasks(
     const match = getTaskMatchDetail(t, normalized);
     if (match.matches) {
       monthlyMatches++;
-      const cat = isValidCategory(t.category) ? t.category : 'Work';
+      const cat = resolveTaskCat(t.category);
       byCategory[cat] = (byCategory[cat] || 0) + 1;
       if (match.field && byField[match.field] !== undefined) {
         byField[match.field]++;
@@ -2182,7 +2600,7 @@ export function countMatchingTasks(
     const match = getTaskMatchDetail(t, normalized);
     if (match.matches) {
       yearlyMatches++;
-      const cat = isValidCategory(t.category) ? t.category : 'Work';
+      const cat = resolveTaskCat(t.category);
       byCategory[cat] = (byCategory[cat] || 0) + 1;
       if (match.field && byField[match.field] !== undefined) {
         byField[match.field]++;
@@ -2609,9 +3027,9 @@ export function buildWeeklyProgressTrends(
   };
 
   const historicalBaseline = [
-    { offsetWeeks: -3, label: '3 Wks Ago', completed: 14, pending: 6 },
-    { offsetWeeks: -2, label: '2 Wks Ago', completed: 16, pending: 5 },
-    { offsetWeeks: -1, label: 'Last Week', completed: 18, pending: 4 },
+    { offsetWeeks: -3, label: '3 Wks Ago', completed: 7, pending: 13 },
+    { offsetWeeks: -2, label: '2 Wks Ago', completed: 8, pending: 12 },
+    { offsetWeeks: -1, label: 'Last Week', completed: 9, pending: 13 },
   ];
 
   const historicalPoints: WeeklyTrendPoint[] = historicalBaseline.map((item) => {
@@ -2795,10 +3213,15 @@ function isValidStatus(val: unknown): val is TaskStatus {
   return val === 'To Do' || val === 'In Progress' || val === 'Done';
 }
 
-export function isValidCategory(val: unknown): val is TaskCategory {
-  return (
-    typeof val === 'string' &&
-    (TASK_CATEGORIES as string[]).includes(val)
+export function isValidCategory(
+  val: unknown,
+  customCategories?: readonly CustomCategoryDefinition[]
+): val is TaskCategory {
+  if (typeof val !== 'string') return false;
+  if ((TASK_CATEGORIES as string[]).includes(val)) return true;
+  const activeCustom = customCategories ?? getRuntimeCustomCategories();
+  return activeCustom.some(
+    (c) => c.name.toLowerCase() === val.trim().toLowerCase()
   );
 }
 
@@ -2818,6 +3241,7 @@ export function parsePersistedDashboardState(rawJson: string | null): {
   yearlyGoals: DetailedTask[];
   archivedTasks: ArchivedTask[];
   activeTheme: ThemeId;
+  customCategories: CustomCategoryDefinition[];
 } {
   const defaultColumns = createInitialWeekColumns();
   const defaultDetailed = createInitialDetailedTasks();
@@ -2833,6 +3257,7 @@ export function parsePersistedDashboardState(rawJson: string | null): {
       yearlyGoals: defaultYearly,
       archivedTasks: [],
       activeTheme: defaultTheme,
+      customCategories: [],
     };
   }
 
@@ -2841,6 +3266,42 @@ export function parsePersistedDashboardState(rawJson: string | null): {
     if (!parsed || typeof parsed !== 'object') {
       throw new Error('Invalid root state');
     }
+
+    const parsedCustomCategories: CustomCategoryDefinition[] = [];
+    if (Array.isArray(parsed.customCategories)) {
+      for (const rawCat of parsed.customCategories.slice(0, 24)) {
+        if (!rawCat || typeof rawCat !== 'object') continue;
+        const def = createCustomCategoryDefinition(
+          typeof rawCat.name === 'string' ? rawCat.name : '',
+          isValidCategoryColorId(rawCat.colorId) ? rawCat.colorId : undefined
+        );
+        if (
+          def &&
+          !(DEFAULT_TASK_CATEGORIES as readonly string[]).some(
+            (d) => d.toLowerCase() === def.name.toLowerCase()
+          ) &&
+          !parsedCustomCategories.some(
+            (c) => c.name.toLowerCase() === def.name.toLowerCase()
+          )
+        ) {
+          parsedCustomCategories.push(def);
+        }
+      }
+    }
+    setRuntimeCustomCategories(parsedCustomCategories);
+
+    const resolvePersistedCategory = (
+      rawCat: unknown,
+      fallback: TaskCategory
+    ): TaskCategory => {
+      if (isValidCategory(rawCat, parsedCustomCategories)) {
+        const matchCustom = parsedCustomCategories.find(
+          (c) => c.name.toLowerCase() === String(rawCat).trim().toLowerCase()
+        );
+        return matchCustom ? matchCustom.name : (rawCat as TaskCategory);
+      }
+      return fallback;
+    };
 
     const columns: DayColumn[] =
       Array.isArray(parsed.columns) && parsed.columns.length === 7
@@ -2888,9 +3349,13 @@ export function parsePersistedDashboardState(rawJson: string | null): {
                     ? task.priority
                     : fallbackTask?.priority ?? 'Med',
                   status,
-                  category: isValidCategory(task?.category)
-                    ? task.category
-                    : fallbackTask?.category ?? 'Work',
+                  category: resolvePersistedCategory(
+                    task?.category,
+                    fallbackTask?.category ?? 'Work'
+                  ),
+                  ...(isValidCategoryColorId(task?.customColor)
+                    ? { customColor: task.customColor }
+                    : {}),
                   notes:
                     typeof task?.notes === 'string'
                       ? sanitizeTaskNotes(task.notes)
@@ -2931,9 +3396,13 @@ export function parsePersistedDashboardState(rawJson: string | null): {
             ? item.priority
             : fb?.priority ?? 'Med',
           status,
-          category: isValidCategory(item?.category)
-            ? item.category
-            : fb?.category ?? 'Work',
+          category: resolvePersistedCategory(
+            item?.category,
+            fb?.category ?? 'Work'
+          ),
+          ...(isValidCategoryColorId(item?.customColor)
+            ? { customColor: item.customColor }
+            : {}),
           recurring: isValidRecurring(item?.recurring)
             ? item.recurring
             : fb?.recurring ?? 'none',
@@ -2969,7 +3438,10 @@ export function parsePersistedDashboardState(rawJson: string | null): {
                 : `orig-${idx + 1}`,
             text: sanitizeTaskText(item.text),
             priority: isValidPriority(item.priority) ? item.priority : 'Med',
-            category: isValidCategory(item.category) ? item.category : 'Work',
+            category: resolvePersistedCategory(item.category, 'Work'),
+            ...(isValidCategoryColorId(item.customColor)
+              ? { customColor: item.customColor }
+              : {}),
             notes:
               typeof item.notes === 'string'
                 ? sanitizeTaskNotes(item.notes)
@@ -3011,6 +3483,7 @@ export function parsePersistedDashboardState(rawJson: string | null): {
       yearlyGoals: sanitizeDetailedList(parsed.yearlyGoals, defaultYearly),
       archivedTasks,
       activeTheme,
+      customCategories: parsedCustomCategories,
     };
   } catch {
     return {
@@ -3020,6 +3493,7 @@ export function parsePersistedDashboardState(rawJson: string | null): {
       yearlyGoals: defaultYearly,
       archivedTasks: [],
       activeTheme: defaultTheme,
+      customCategories: [],
     };
   }
 }
@@ -3475,8 +3949,12 @@ export function parseBulkImportLines(
   }
 
   const defaultCategory: TaskCategory =
-    options?.defaultCategory && isValidCategory(options.defaultCategory)
-      ? options.defaultCategory
+    options?.defaultCategory &&
+    (isValidCategory(options.defaultCategory) ||
+      sanitizeCustomCategoryName(options.defaultCategory).length > 0)
+      ? isValidCategory(options.defaultCategory)
+        ? options.defaultCategory
+        : sanitizeCustomCategoryName(options.defaultCategory)
       : 'Work';
   const defaultPriority: Priority =
     options?.defaultPriority && isValidPriority(options.defaultPriority)
@@ -3688,6 +4166,307 @@ export function bulkImportTasksToDayColumn(
     targetDayName: targetCol.dayName,
   };
 }
+
+export type TrendDirection = 'up' | 'down' | 'flat';
+
+export interface SparklineCoordinatePoint {
+  x: number;
+  y: number;
+  rate: number;
+  label: string;
+}
+
+export interface WeeklyTrendComparison {
+  currentPercentage: number;
+  previousWeekPercentage: number;
+  deltaPercentage: number;
+  direction: TrendDirection;
+  deltaBadgeText: string;
+  comparisonSummary: string;
+  sparklineRates: number[];
+  sparklineLabels: string[];
+  sparklinePoints: SparklineCoordinatePoint[];
+  sparklinePolylinePoints: string;
+  previousWeekBaselineY: number;
+}
+
+export const DEFAULT_HISTORICAL_WEEKLY_RATES = [35, 40, 41] as const;
+export const DEFAULT_HISTORICAL_WEEKLY_LABELS = [
+  '3 Wks Ago',
+  '2 Wks Ago',
+  'Last Week',
+  'This Week',
+] as const;
+
+export function calculateWeeklyTrendComparison(input: {
+  currentPercentage: number;
+  previousWeekPercentage?: number;
+  historicalRates?: readonly number[];
+  historicalLabels?: readonly string[];
+}): WeeklyTrendComparison {
+  const clampPct = (val: number) =>
+    Math.max(0, Math.min(100, Math.round(Number.isFinite(val) ? val : 0)));
+
+  const currentPercentage = clampPct(input.currentPercentage);
+  const baseHistorical =
+    input.historicalRates && input.historicalRates.length >= 1
+      ? input.historicalRates.map(clampPct)
+      : [...DEFAULT_HISTORICAL_WEEKLY_RATES];
+
+  const previousWeekPercentage =
+    input.previousWeekPercentage !== undefined
+      ? clampPct(input.previousWeekPercentage)
+      : baseHistorical[baseHistorical.length - 1] ?? 41;
+
+  // Ensure the second-to-last point in the 4-week sparkline reflects previousWeekPercentage
+  const priorHistory =
+    baseHistorical.length >= 3
+      ? [baseHistorical[0], baseHistorical[1], previousWeekPercentage]
+      : [35, 40, previousWeekPercentage];
+
+  const sparklineRates = [...priorHistory, currentPercentage];
+  const sparklineLabels =
+    input.historicalLabels &&
+    input.historicalLabels.length === sparklineRates.length
+      ? [...input.historicalLabels]
+      : [...DEFAULT_HISTORICAL_WEEKLY_LABELS];
+
+  const deltaPercentage = currentPercentage - previousWeekPercentage;
+  const direction: TrendDirection =
+    deltaPercentage > 0 ? 'up' : deltaPercentage < 0 ? 'down' : 'flat';
+
+  const deltaBadgeText =
+    deltaPercentage > 0
+      ? `+${deltaPercentage}%`
+      : deltaPercentage < 0
+      ? `${deltaPercentage}%`
+      : '0%';
+
+  const comparisonSummary =
+    direction === 'up'
+      ? `Increasing (+${deltaPercentage}% vs ${previousWeekPercentage}% last week)`
+      : direction === 'down'
+      ? `Decreasing (${deltaPercentage}% vs ${previousWeekPercentage}% last week)`
+      : `Steady (same as ${previousWeekPercentage}% last week)`;
+
+  // Map 0..100% into a 64x22 SVG viewBox with horizontal padding [6..58] and vertical [18..4]
+  const minX = 6;
+  const maxX = 58;
+  const minY = 4;
+  const maxY = 18;
+  const rateToY = (rate: number): number => {
+    const ratio = clampPct(rate) / 100;
+    return Number((maxY - ratio * (maxY - minY)).toFixed(1));
+  };
+
+  const stepX =
+    sparklineRates.length > 1
+      ? (maxX - minX) / (sparklineRates.length - 1)
+      : 0;
+
+  const sparklinePoints: SparklineCoordinatePoint[] = sparklineRates.map(
+    (rate, idx) => ({
+      x: Number((minX + idx * stepX).toFixed(1)),
+      y: rateToY(rate),
+      rate,
+      label: sparklineLabels[idx] || `Week ${idx + 1}`,
+    })
+  );
+
+  const sparklinePolylinePoints = sparklinePoints
+    .map((pt) => `${pt.x},${pt.y}`)
+    .join(' ');
+
+  return {
+    currentPercentage,
+    previousWeekPercentage,
+    deltaPercentage,
+    direction,
+    deltaBadgeText,
+    comparisonSummary,
+    sparklineRates,
+    sparklineLabels,
+    sparklinePoints,
+    sparklinePolylinePoints,
+    previousWeekBaselineY: rateToY(previousWeekPercentage),
+  };
+}
+
+export type MilestoneThreshold = 25 | 50 | 75 | 100;
+export type MilestoneBadgeTier = 'bronze' | 'silver' | 'gold' | 'platinum';
+
+export interface MilestoneBadgeDefinition {
+  id: string;
+  threshold: MilestoneThreshold;
+  title: string;
+  shortLabel: string;
+  tier: MilestoneBadgeTier;
+  description: string;
+}
+
+export interface MilestoneBadgeStatus extends MilestoneBadgeDefinition {
+  unlocked: boolean;
+  progressToMilestone: number;
+  tasksRequired: number;
+  tasksRemainingToUnlock: number;
+  statusText: string;
+}
+
+export interface WeeklyMilestoneEvaluation {
+  currentPercentage: number;
+  completedTasks: number;
+  totalTasks: number;
+  badges: MilestoneBadgeStatus[];
+  unlockedBadges: MilestoneBadgeStatus[];
+  unlockedCount: number;
+  totalBadges: number;
+  highestUnlockedBadge: MilestoneBadgeStatus | null;
+  nextMilestoneBadge: MilestoneBadgeStatus | null;
+}
+
+export const WEEKLY_MILESTONE_BADGES: readonly MilestoneBadgeDefinition[] = [
+  {
+    id: 'milestone-25',
+    threshold: 25,
+    title: 'Momentum Starter',
+    shortLabel: '25% Kickoff',
+    tier: 'bronze',
+    description: 'Complete at least 25% of your weekly tasks to build early momentum.',
+  },
+  {
+    id: 'milestone-50',
+    threshold: 50,
+    title: 'Halfway Hero',
+    shortLabel: '50% Halfway',
+    tier: 'silver',
+    description: 'Reach 50% weekly completion and cross the halfway mark.',
+  },
+  {
+    id: 'milestone-75',
+    threshold: 75,
+    title: 'Power Finisher',
+    shortLabel: '75% Sprint',
+    tier: 'gold',
+    description: 'Reach 75% weekly completion and enter the final stretch.',
+  },
+  {
+    id: 'milestone-100',
+    threshold: 100,
+    title: 'Week Champion',
+    shortLabel: '100% Master',
+    tier: 'platinum',
+    description: 'Complete 100% of scheduled weekly tasks.',
+  },
+] as const;
+
+function computeMinTasksForPercentageThreshold(
+  totalTasks: number,
+  threshold: MilestoneThreshold
+): number {
+  if (totalTasks <= 0) return 0;
+  for (let c = 0; c <= totalTasks; c++) {
+    if (Math.round((c / totalTasks) * 100) >= threshold) {
+      return c;
+    }
+  }
+  return totalTasks;
+}
+
+export function evaluateWeeklyMilestoneBadges(input: {
+  completedTasks: number;
+  totalTasks: number;
+  completionPercentage?: number;
+}): WeeklyMilestoneEvaluation {
+  const safeTotal = Math.max(0, Math.floor(input.totalTasks || 0));
+  const safeCompleted = Math.max(
+    0,
+    Math.min(safeTotal, Math.floor(input.completedTasks || 0))
+  );
+  const computedPct =
+    safeTotal === 0 ? 0 : Math.round((safeCompleted / safeTotal) * 100);
+  const rawPct =
+    input.completionPercentage !== undefined
+      ? Math.round(input.completionPercentage)
+      : computedPct;
+  const currentPercentage =
+    safeTotal === 0 ? 0 : Math.max(0, Math.min(100, rawPct));
+
+  const badges: MilestoneBadgeStatus[] = WEEKLY_MILESTONE_BADGES.map((def) => {
+    const unlocked = safeTotal > 0 && currentPercentage >= def.threshold;
+    const tasksRequired = computeMinTasksForPercentageThreshold(
+      safeTotal,
+      def.threshold
+    );
+    const tasksRemainingToUnlock = unlocked
+      ? 0
+      : Math.max(0, tasksRequired - safeCompleted);
+    const progressToMilestone =
+      safeTotal === 0
+        ? 0
+        : unlocked
+        ? 100
+        : Math.max(
+            0,
+            Math.min(99, Math.round((currentPercentage / def.threshold) * 100))
+          );
+
+    const statusText =
+      safeTotal === 0
+        ? 'Add tasks to unlock'
+        : unlocked
+        ? 'Earned'
+        : tasksRemainingToUnlock === 1
+        ? '1 task to unlock'
+        : `${tasksRemainingToUnlock} tasks to unlock`;
+
+    return {
+      ...def,
+      unlocked,
+      progressToMilestone,
+      tasksRequired,
+      tasksRemainingToUnlock,
+      statusText,
+    };
+  });
+
+  const unlockedBadges = badges.filter((b) => b.unlocked);
+  const highestUnlockedBadge =
+    unlockedBadges.length > 0
+      ? unlockedBadges[unlockedBadges.length - 1]
+      : null;
+  const nextMilestoneBadge = badges.find((b) => !b.unlocked) ?? null;
+
+  return {
+    currentPercentage,
+    completedTasks: safeCompleted,
+    totalTasks: safeTotal,
+    badges,
+    unlockedBadges,
+    unlockedCount: unlockedBadges.length,
+    totalBadges: badges.length,
+    highestUnlockedBadge,
+    nextMilestoneBadge,
+  };
+}
+
+export function detectNewlyUnlockedMilestoneBadges(
+  previousInput: {
+    completedTasks: number;
+    totalTasks: number;
+    completionPercentage?: number;
+  },
+  nextInput: {
+    completedTasks: number;
+    totalTasks: number;
+    completionPercentage?: number;
+  }
+): MilestoneBadgeStatus[] {
+  const prevEval = evaluateWeeklyMilestoneBadges(previousInput);
+  const nextEval = evaluateWeeklyMilestoneBadges(nextInput);
+  const prevUnlockedIds = new Set(prevEval.unlockedBadges.map((b) => b.id));
+  return nextEval.unlockedBadges.filter((b) => !prevUnlockedIds.has(b.id));
+}
+
 
 
 

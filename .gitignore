@@ -9,3 +9,6 @@ coverage/
 .playwright-cli/
 .aistudio/
 .github/workflows/
+-e 
+.github/workflows/
+.playwright-cli/

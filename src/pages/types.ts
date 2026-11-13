@@ -1,5 +1,7 @@
 import {
   BulkImportOptions,
+  CategoryColorId,
+  CustomCategoryDefinition,
   DashboardMetrics,
   DayColumn,
   DetailedTask,
@@ -21,6 +23,12 @@ export interface SharedDashboardPageProps {
   weekRangeLabel: string;
   searchQuery: string;
   metrics: DashboardMetrics;
+  customCategories?: CustomCategoryDefinition[];
+  onAddCustomCategory?: (
+    name: string,
+    colorId?: CategoryColorId
+  ) => CustomCategoryDefinition | null;
+  onRemoveCustomCategory?: (name: string) => void;
   onSearchQueryChange: (query: string) => void;
   onSelectTheme: (theme: ThemeId) => void;
   onSelectView: (view: ViewMode) => void;
@@ -31,7 +39,11 @@ export interface SharedDashboardPageProps {
     origin?: { x: number; y: number }
   ) => void;
   onCycleDailyPriority: (dayId: string, taskId: string) => void;
-  onCycleDailyCategory: (dayId: string, taskId: string) => void;
+  onCycleDailyCategory: (
+    dayId: string,
+    taskId: string,
+    explicitCategory?: TaskCategory
+  ) => void;
   onCycleDailyRecurring?: (dayId: string, taskId: string) => void;
   onSetDailyRecurring?: (
     dayId: string,
@@ -59,7 +71,10 @@ export interface SharedDashboardPageProps {
   onToggleDetailedTask: (taskId: string) => void;
   onCycleDetailedPriority: (taskId: string) => void;
   onCycleDetailedStatus: (taskId: string) => void;
-  onCycleDetailedCategory: (taskId: string) => void;
+  onCycleDetailedCategory: (
+    taskId: string,
+    explicitCategory?: TaskCategory
+  ) => void;
   onUpdateDetailedText: (taskId: string, text: string) => void;
   onToggleGoalTask: (mode: 'month' | 'year', taskId: string) => void;
   onCycleGoalPriority: (mode: 'month' | 'year', taskId: string) => void;
@@ -79,4 +94,5 @@ export interface SharedDashboardPageProps {
   onQuickSave?: (customMessage?: string) => void;
   onNavigate: (path: PagePath) => void;
 }
+
 

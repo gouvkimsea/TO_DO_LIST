@@ -22,6 +22,9 @@ export const DashboardPage: React.FC<SharedDashboardPageProps> = ({
   selectedDate,
   searchQuery,
   archivedCount,
+  customCategories,
+  onAddCustomCategory,
+  onRemoveCustomCategory,
   onSelectTheme,
   onToggleDetailedTask,
   onCycleDetailedPriority,
@@ -118,6 +121,9 @@ export const DashboardPage: React.FC<SharedDashboardPageProps> = ({
               activeTheme={activeTheme}
               searchQuery={searchQuery}
               archivedCount={archivedCount}
+              customCategories={customCategories}
+              onAddCustomCategory={onAddCustomCategory}
+              onRemoveCustomCategory={onRemoveCustomCategory}
               onSelectTheme={onSelectTheme}
               onToggleDetailedTask={onToggleDetailedTask}
               onCycleDetailedPriority={onCycleDetailedPriority}

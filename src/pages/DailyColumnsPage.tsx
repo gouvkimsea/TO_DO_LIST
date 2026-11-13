@@ -12,6 +12,9 @@ export const DailyColumnsPage: React.FC<SharedDashboardPageProps> = ({
   selectedDate,
   weekRangeLabel,
   searchQuery,
+  customCategories,
+  onAddCustomCategory,
+  onRemoveCustomCategory,
   onSearchQueryChange,
   onSelectTheme,
   onSelectView,
@@ -76,6 +79,9 @@ export const DailyColumnsPage: React.FC<SharedDashboardPageProps> = ({
             selectedDate={selectedDate}
             weekRangeLabel={weekRangeLabel}
             searchQuery={searchQuery}
+            customCategories={customCategories}
+            onAddCustomCategory={onAddCustomCategory}
+            onRemoveCustomCategory={onRemoveCustomCategory}
             onSearchQueryChange={onSearchQueryChange}
             onSelectTheme={onSelectTheme}
             onSelectView={onSelectView}

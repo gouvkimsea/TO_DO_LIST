@@ -74,6 +74,12 @@ import {
   restoreAllArchivedTasks,
   countWeekTasksByCompletion,
   countMatchingTasks,
+  CategoryColorId,
+  CustomCategoryDefinition,
+  addCustomCategory,
+  removeCustomCategory,
+  setRuntimeCustomCategories,
+  getRuntimeCustomCategories,
 } from './utils/todoLogic';
 import {
   getSoundPreference,
@@ -227,6 +233,13 @@ export default function App() {
   const [activeTheme, setActiveTheme] = useState<ThemeId>(
     () => initialPersisted.activeTheme
   );
+  const [customCategories, setCustomCategories] = useState<
+    CustomCategoryDefinition[]
+  >(() => initialPersisted.customCategories);
+
+  useEffect(() => {
+    setRuntimeCustomCategories(customCategories);
+  }, [customCategories]);
 
   const [activeView, setActiveView] = useState<ViewMode>('week');
   const [selectedDate, setSelectedDate] = useState<string>('2026-06-11');
@@ -352,12 +365,21 @@ export default function App() {
           yearlyGoals,
           archivedTasks,
           activeTheme,
+          customCategories,
         })
       );
     } catch {
       // ignore quota errors
     }
-  }, [columns, detailedTasks, monthlyGoals, yearlyGoals, archivedTasks, activeTheme]);
+  }, [
+    columns,
+    detailedTasks,
+    monthlyGoals,
+    yearlyGoals,
+    archivedTasks,
+    activeTheme,
+    customCategories,
+  ]);
 
   const handleExplicitSave = useCallback(
     (customMessage?: string, shortcutBadge?: string) => {
@@ -371,6 +393,7 @@ export default function App() {
             yearlyGoals,
             archivedTasks,
             activeTheme,
+            customCategories,
           })
         );
       } catch {
@@ -402,7 +425,15 @@ export default function App() {
         }, 2600);
       }
     },
-    [columns, detailedTasks, monthlyGoals, yearlyGoals, archivedTasks, activeTheme]
+    [
+      columns,
+      detailedTasks,
+      monthlyGoals,
+      yearlyGoals,
+      archivedTasks,
+      activeTheme,
+      customCategories,
+    ]
   );
 
   const handleUndo = useCallback(() => {
@@ -800,8 +831,45 @@ export default function App() {
   );
 
   const metrics = useMemo(
-    () => calculateDashboardMetrics(columns, detailedTasks),
-    [columns, detailedTasks]
+    () => calculateDashboardMetrics(columns, detailedTasks, customCategories),
+    [columns, detailedTasks, customCategories]
+  );
+
+  const handleAddCustomCategory = useCallback(
+    (
+      name: string,
+      colorId?: CategoryColorId
+    ): CustomCategoryDefinition | null => {
+      const { nextCustomCategories, addedCategory } = addCustomCategory(
+        customCategories,
+        name,
+        colorId
+      );
+      if (addedCategory) {
+        setRuntimeCustomCategories(nextCustomCategories);
+        setCustomCategories(nextCustomCategories);
+        handleExplicitSave(
+          `Added custom category "#${addedCategory.name}"`
+        );
+      }
+      return addedCategory;
+    },
+    [customCategories, handleExplicitSave]
+  );
+
+  const handleRemoveCustomCategory = useCallback(
+    (name: string) => {
+      const nextCustomCategories = removeCustomCategory(
+        customCategories,
+        name
+      );
+      if (nextCustomCategories.length !== customCategories.length) {
+        setRuntimeCustomCategories(nextCustomCategories);
+        setCustomCategories(nextCustomCategories);
+        handleExplicitSave(`Removed custom category "#${name}"`);
+      }
+    },
+    [customCategories, handleExplicitSave]
   );
 
   const handleDateChange = (newDate: string) => {
@@ -897,12 +965,18 @@ export default function App() {
     setBothTaskStates(nextColumns, nextDetailedTasks);
   };
 
-  const handleCycleDailyCategory = (dayId: string, taskId: string) => {
+  const handleCycleDailyCategory = (
+    dayId: string,
+    taskId: string,
+    explicitCategory?: TaskCategory
+  ) => {
     const { nextColumns, nextDetailedTasks } = syncDailyTaskCategory(
       columns,
       detailedTasks,
       dayId,
-      taskId
+      taskId,
+      explicitCategory,
+      customCategories
     );
     setBothTaskStates(nextColumns, nextDetailedTasks);
   };
@@ -960,9 +1034,13 @@ export default function App() {
           recurring,
         });
       if (!addedTask) return;
+      const runtimeCats = getRuntimeCustomCategories();
+      if (runtimeCats.length !== customCategories.length) {
+        setCustomCategories([...runtimeCats]);
+      }
       setBothTaskStates(nextColumns, nextDetailedTasks);
     },
-    [columns, detailedTasks, setBothTaskStates]
+    [columns, detailedTasks, customCategories.length, setBothTaskStates]
   );
 
   const handleBulkImportTasks = useCallback(
@@ -980,6 +1058,11 @@ export default function App() {
           options
         );
       if (addedTasks.length === 0) return 0;
+
+      const runtimeCats = getRuntimeCustomCategories();
+      if (runtimeCats.length !== customCategories.length) {
+        setCustomCategories([...runtimeCats]);
+      }
 
       const prevCol = columns.find((c) => c.id === dayId);
       const nextCol = nextColumns.find((c) => c.id === dayId);
@@ -1002,6 +1085,7 @@ export default function App() {
     [
       columns,
       detailedTasks,
+      customCategories.length,
       setBothTaskStates,
       handleExplicitSave,
       triggerSubtleDayConfetti,
@@ -1230,11 +1314,16 @@ export default function App() {
     setBothTaskStates(nextColumns, nextDetailedTasks);
   };
 
-  const handleCycleDetailedCategory = (taskId: string) => {
+  const handleCycleDetailedCategory = (
+    taskId: string,
+    explicitCategory?: TaskCategory
+  ) => {
     const { nextDetailedTasks, nextColumns } = syncDetailedTaskCategory(
       detailedTasks,
       columns,
-      taskId
+      taskId,
+      explicitCategory,
+      customCategories
     );
     setBothTaskStates(nextColumns, nextDetailedTasks);
   };
@@ -1297,7 +1386,9 @@ export default function App() {
     const setter = mode === 'month' ? setMonthlyGoals : setYearlyGoals;
     setter((prev) =>
       prev.map((t) =>
-        t.id === taskId ? { ...t, category: cycleCategory(t.category) } : t
+        t.id === taskId
+          ? { ...t, category: cycleCategory(t.category, customCategories) }
+          : t
       )
     );
   };
@@ -1347,6 +1438,7 @@ export default function App() {
           yearlyGoals,
           archivedTasks,
           activeTheme,
+          customCategories,
         },
         null,
         2
@@ -1365,7 +1457,16 @@ export default function App() {
     } catch {
       handleExplicitSave('Failed to export backup file');
     }
-  }, [columns, detailedTasks, monthlyGoals, yearlyGoals, archivedTasks, activeTheme, handleExplicitSave]);
+  }, [
+    columns,
+    detailedTasks,
+    monthlyGoals,
+    yearlyGoals,
+    archivedTasks,
+    activeTheme,
+    customCategories,
+    handleExplicitSave,
+  ]);
 
   const handleImportJsonBackup = useCallback(
     (rawJsonString: string): boolean => {
@@ -1379,6 +1480,7 @@ export default function App() {
         setMonthlyGoals(parsed.monthlyGoals);
         setYearlyGoals(parsed.yearlyGoals);
         setActiveTheme(parsed.activeTheme);
+        setCustomCategories(parsed.customCategories);
         handleExplicitSave('Backup restored successfully — all views updated');
         return true;
       } catch {
@@ -1389,8 +1491,15 @@ export default function App() {
   );
 
   const globalMatchStats = useMemo(
-    () => countMatchingTasks(columns, monthlyGoals, yearlyGoals, searchQuery),
-    [columns, monthlyGoals, yearlyGoals, searchQuery]
+    () =>
+      countMatchingTasks(
+        columns,
+        monthlyGoals,
+        yearlyGoals,
+        searchQuery,
+        customCategories
+      ),
+    [columns, monthlyGoals, yearlyGoals, searchQuery, customCategories]
   );
 
   const sharedPageProps: SharedDashboardPageProps = {
@@ -1404,6 +1513,9 @@ export default function App() {
     weekRangeLabel,
     searchQuery: sanitizeTaskText(searchQuery, 120),
     metrics,
+    customCategories,
+    onAddCustomCategory: handleAddCustomCategory,
+    onRemoveCustomCategory: handleRemoveCustomCategory,
     onSearchQueryChange: (q) => setSearchQuery(sanitizeTaskText(q, 120)),
     onSelectTheme: setActiveTheme,
     onSelectView: setActiveView,
