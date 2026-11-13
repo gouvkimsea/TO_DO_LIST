@@ -1,0 +1,19 @@
+{
+  "name": "Interactive Weekly To-Do Dashboard",
+  "short_name": "Weekly To-Do",
+  "description": "A self-saving, interactive Weekly, Monthly, and Yearly To-Do List dashboard with color themes, live progress charts, and spreadsheet tracker.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#FAF6F0",
+  "theme_color": "#FAF6F0",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
+

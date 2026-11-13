@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Interactive Weekly To-Do Dashboard</title>
+    <meta name="description" content="A self-saving, interactive Weekly, Monthly, and Yearly To-Do List dashboard with 4 color themes, live progress charts, and spreadsheet tracker." />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#FAF6F0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="canonical" href="https://interactive-todo-dashboard.com/" />
+
+    <!-- Mobile Web App Capable -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Weekly To-Do" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Interactive Weekly To-Do Dashboard" />
+    <meta property="og:title" content="Interactive Weekly To-Do Dashboard" />
+    <meta property="og:description" content="A self-saving, interactive Weekly, Monthly, and Yearly To-Do List dashboard with 4 color themes, live progress charts, and spreadsheet tracker." />
+    <meta property="og:url" content="/" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Interactive Weekly To-Do Dashboard" />
+    <meta name="twitter:description" content="A self-saving, interactive Weekly, Monthly, and Yearly To-Do List dashboard with 4 color themes, live progress charts, and spreadsheet tracker." />
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,600;0,700;1,400;1,600&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:ital,wght@0,700;0,800;1,400;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+    <!-- Structured Data (Schema.org JSON-LD) -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Interactive Weekly To-Do Dashboard",
+        "description": "A self-saving, interactive Weekly, Monthly, and Yearly To-Do List dashboard with 4 color themes, live progress charts, and spreadsheet tracker.",
+        "url": "/",
+        "applicationCategory": "ProductivityApplication",
+        "operatingSystem": "Web",
+        "inLanguage": "en",
+        "isAccessibleForFree": true,
+        "featureList": [
+          "Weekly, Monthly, and Yearly task planning",
+          "Four interactive color themes (Terracotta, Candy Pastel, Lavender Mist, Soft Neutral)",
+          "Drag-and-drop daily task reordering and expandable task notes",
+          "Live completion ring, daily progress bars, and 4-week progress trend charts",
+          "Local browser auto-save with standalone HTML and CSV spreadsheet export"
+        ]
+      }
+    </script>
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('interactive_todo_color_scheme_v1');
+          var isDark =
+            stored === 'dark' ||
+            (stored !== 'light' &&
+              window.matchMedia &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var scheme = isDark ? 'dark' : 'light';
+          var root = document.documentElement;
+          root.classList.toggle('dark', isDark);
+          root.classList.toggle('light', !isDark);
+          root.setAttribute('data-color-scheme', scheme);
+          root.style.colorScheme = scheme;
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body class="bg-[#FAF6F0] text-[#2C2623] antialiased selection:bg-[#D17A56]/20 selection:text-[#2C2623]">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

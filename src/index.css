@@ -1,0 +1,575 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: #FAF6F0;
+    color: #2D2A26;
+    transition: background-color 220ms cubic-bezier(0.4, 0, 0.2, 1),
+      color 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  html.dark body {
+    background-color: #141210;
+    color: #F4EFE8;
+  }
+}
+
+/* Smooth theme transition across surfaces, borders, text, and controls */
+header,
+section,
+main,
+nav,
+div,
+table,
+thead,
+tbody,
+tr,
+th,
+td,
+button,
+a,
+input,
+textarea,
+span,
+kbd,
+p,
+h1,
+h2,
+h3,
+h4,
+circle {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow, opacity;
+  transition-duration: 200ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.font-serif-display {
+  font-family: 'Playfair Display', Georgia, serif;
+}
+
+.font-serif-italic {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+:root {
+  --navbar-height: 49px;
+  --chart-grid-stroke: #EFECE6;
+  --chart-axis-stroke: #E5DEC9;
+  --chart-tick-primary: #5A534C;
+  --chart-tick-secondary: #8A8279;
+  --chart-cursor-fill: #FAF6F0;
+  --chart-tooltip-bg: #FDFBF7;
+  --chart-tooltip-border: #E5DEC9;
+  --chart-tooltip-text: #2F2B28;
+  --chart-pending-fill: #DFD8CE;
+  --donut-track-stroke: #EFECE6;
+  --donut-progress-stroke: #604E3D;
+}
+
+html.dark {
+  --chart-grid-stroke: #2C2722;
+  --chart-axis-stroke: #3A342E;
+  --chart-tick-primary: #D8CFC4;
+  --chart-tick-secondary: #A69C90;
+  --chart-cursor-fill: #25211D;
+  --chart-tooltip-bg: #1E1B18;
+  --chart-tooltip-border: #3B352F;
+  --chart-tooltip-text: #F4EFE8;
+  --chart-pending-fill: #3D3630;
+  --donut-track-stroke: #2E2924;
+  --donut-progress-stroke: #E28E64;
+}
+
+@media (min-width: 640px) {
+  :root {
+    --navbar-height: 57px;
+  }
+}
+
+.radial-stage-bg {
+  background: radial-gradient(circle at 50% 45%, #FFFDF9 0%, #F7F2EA 52%, #F2ECE1 100%);
+}
+
+html.dark .radial-stage-bg {
+  background: radial-gradient(circle at 50% 42%, #1F1C18 0%, #161411 55%, #110F0D 100%);
+}
+
+.full-screen-hero {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.skip-to-content {
+  position: absolute;
+  left: 0.75rem;
+  top: -4rem;
+  z-index: 100;
+  background-color: #2F2B28;
+  color: #FAF6F0;
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: top 0.15s ease-in-out;
+  box-shadow: 0 4px 12px rgba(47, 43, 40, 0.25);
+}
+
+html.dark .skip-to-content {
+  background-color: #E28E64;
+  color: #141210;
+}
+
+.skip-to-content:focus {
+  top: 0.75rem;
+  outline: 2px solid #C26D43;
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid #C26D43;
+  outline-offset: 2px;
+}
+
+html.dark button:focus-visible,
+html.dark a:focus-visible,
+html.dark input:focus-visible,
+html.dark textarea:focus-visible,
+html.dark select:focus-visible {
+  outline: 2px solid #E58E65;
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   CAREFULLY DESIGNED DARK MODE PALETTE (WARM ESPRESSO / OBSIDIAN)
+   ========================================================================== */
+
+/* 1. Primary & Elevated Card / Window Surfaces */
+html.dark .bg-white {
+  background-color: #1F1C18 !important;
+}
+
+html.dark .bg-\[\#FDFBF7\],
+html.dark .bg-\[\#FCFBF9\] {
+  background-color: #1C1916 !important;
+}
+
+html.dark .bg-\[\#FAF8F5\],
+html.dark .bg-\[\#FAF7F2\],
+html.dark .bg-\[\#F9F7F3\] {
+  background-color: #171412 !important;
+}
+
+html.dark .bg-\[\#FAF6F0\] {
+  background-color: #141210 !important;
+}
+
+html.dark .bg-\[\#FAF6F0\]\/90 {
+  background-color: rgba(20, 18, 16, 0.92) !important;
+}
+
+/* 2. Secondary / Recessed / Toolbar / Pill Surfaces */
+html.dark .bg-\[\#F5F1EB\],
+html.dark .bg-\[\#F4EFE6\],
+html.dark .bg-\[\#F2EFE9\],
+html.dark .bg-\[\#F0EBE1\] {
+  background-color: #26221E !important;
+}
+
+html.dark .bg-\[\#EFECE6\],
+html.dark .bg-\[\#EFEBE4\],
+html.dark .bg-\[\#EFE7DC\],
+html.dark .bg-\[\#E8E0D4\],
+html.dark .bg-\[\#E5DED4\],
+html.dark .bg-\[\#E5DEC9\],
+html.dark .bg-\[\#E4DDD3\] {
+  background-color: #2B2622 !important;
+}
+
+/* 3. Warm Terracotta / Amber / Sage / Lavender Tinted Surfaces */
+html.dark .bg-\[\#FAF4EC\],
+html.dark .bg-\[\#FAF3EB\],
+html.dark .bg-\[\#FAF0E3\],
+html.dark .bg-\[\#F6ECE3\],
+html.dark .bg-\[\#FAE8CE\],
+html.dark .bg-\[\#F5E0D2\],
+html.dark .bg-\[\#F5DFD0\] {
+  background-color: #33241C !important;
+}
+
+html.dark .bg-\[\#EFF3EE\],
+html.dark .bg-\[\#E3F1E6\],
+html.dark .bg-\[\#DFECE0\],
+html.dark .bg-\[\#CBEAD6\] {
+  background-color: #1B2E22 !important;
+}
+
+html.dark .bg-\[\#E6E2F3\] {
+  background-color: #272238 !important;
+}
+
+/* 4. Hover & Focus Surface States */
+html.dark .hover\:bg-white:hover,
+html.dark .hover\:bg-\[\#FDFBF8\]:hover {
+  background-color: #26221E !important;
+}
+
+html.dark .hover\:bg-\[\#FAF8F5\]:hover,
+html.dark .hover\:bg-\[\#FAF7F2\]:hover,
+html.dark .hover\:bg-\[\#FAF7F2\]\/70:hover {
+  background-color: #25211D !important;
+}
+
+html.dark .hover\:bg-\[\#F4EFE8\]:hover,
+html.dark .hover\:bg-\[\#F4EFE6\]:hover,
+html.dark .hover\:bg-\[\#F3EFE9\]:hover,
+html.dark .hover\:bg-\[\#F2EFE9\]:hover,
+html.dark .hover\:bg-\[\#EFECE6\]:hover,
+html.dark .hover\:bg-\[\#EFEBE4\]:hover,
+html.dark .hover\:bg-\[\#EBE4DA\]:hover,
+html.dark .hover\:bg-\[\#EAE3D6\]:hover,
+html.dark .hover\:bg-\[\#EAE2D6\]:hover,
+html.dark .hover\:bg-\[\#EAE1D3\]:hover,
+html.dark .hover\:bg-\[\#E4DDD3\]\/70:hover {
+  background-color: #322C27 !important;
+}
+
+html.dark .hover\:bg-\[\#EFE0D3\]:hover,
+html.dark .hover\:bg-\[\#EED2BF\]:hover {
+  background-color: #422E23 !important;
+}
+
+html.dark .hover\:bg-\[\#D1E3D3\]:hover {
+  background-color: #233B2C !important;
+}
+
+html.dark .hover\:bg-\[\#DAD4EC\]:hover {
+  background-color: #322B47 !important;
+}
+
+html.dark .hover\:bg-\[\#FDECEB\]:hover {
+  background-color: #3B2020 !important;
+}
+
+html.dark .focus\:bg-\[\#FAF6F0\]:focus {
+  background-color: #28231F !important;
+}
+
+/* 5. Typography Hierarchy in Dark Mode */
+html.dark .text-\[\#2F2B28\],
+html.dark .text-\[\#2F2C2A\],
+html.dark .text-\[\#2C2623\],
+html.dark .text-\[\#3B3530\],
+html.dark .text-\[\#3B3632\] {
+  color: #F4EFE8 !important;
+}
+
+html.dark .text-\[\#4A433C\],
+html.dark .text-\[\#4B453F\],
+html.dark .text-\[\#5A534C\] {
+  color: #D9D0C5 !important;
+}
+
+html.dark .text-\[\#6E665E\],
+html.dark .text-\[\#6E675F\],
+html.dark .text-\[\#7A7269\],
+html.dark .text-\[\#7A6E63\],
+html.dark .text-\[\#7A624D\],
+html.dark .text-\[\#8A8279\],
+html.dark .text-\[\#8C8379\],
+html.dark .text-\[\#8C7A6B\],
+html.dark .text-\[\#8E877E\],
+html.dark .text-\[\#8E877F\],
+html.dark .text-\[\#9A8F82\],
+html.dark .text-\[\#9A9288\],
+html.dark .text-\[\#9C9288\],
+html.dark .text-\[\#9C948B\] {
+  color: #AEA498 !important;
+}
+
+html.dark .text-\[\#A59E95\],
+html.dark .text-\[\#A7A097\],
+html.dark .text-\[\#B0A89E\],
+html.dark .text-\[\#B5ADA3\],
+html.dark .text-\[\#B8AFA6\],
+html.dark .text-\[\#C2B9AF\],
+html.dark .text-\[\#C4BDB3\],
+html.dark .text-\[\#C5BCB0\],
+html.dark .text-\[\#C6BEB4\] {
+  color: #7D746A !important;
+}
+
+html.dark .placeholder\:text-\[\#C4BDB3\]::placeholder,
+html.dark .placeholder\:text-\[\#B5ADA3\]::placeholder,
+html.dark .placeholder\:text-\[\#9C948B\]::placeholder {
+  color: #7D746A !important;
+}
+
+/* Warm Terracotta, Amber, Sage & Lavender Accent Text in Dark Mode */
+html.dark .text-\[\#C26D43\],
+html.dark .text-\[\#C87D55\],
+html.dark .text-\[\#B86B43\],
+html.dark .text-\[\#B86741\],
+html.dark .text-\[\#B05C37\],
+html.dark .text-\[\#B07B54\],
+html.dark .text-\[\#A85B33\],
+html.dark .text-\[\#9A4E28\],
+html.dark .text-\[\#9E6B47\],
+html.dark .text-\[\#9E6826\],
+html.dark .text-\[\#9C7B49\],
+html.dark .text-\[\#8C623E\] {
+  color: #E8956B !important;
+}
+
+html.dark .text-\[\#8C3B32\] {
+  color: #F08C82 !important;
+}
+
+html.dark .text-\[\#238854\],
+html.dark .text-\[\#265D36\],
+html.dark .text-\[\#2D6E48\],
+html.dark .text-\[\#3F6F4A\],
+html.dark .text-\[\#3F7A4D\],
+html.dark .text-\[\#446B4D\],
+html.dark .text-\[\#4A8B63\],
+html.dark .text-\[\#4C7C57\] {
+  color: #82CFA0 !important;
+}
+
+html.dark .text-\[\#5D508C\],
+html.dark .text-\[\#6B5B9E\],
+html.dark .text-\[\#6D5B98\] {
+  color: #BFB3F2 !important;
+}
+
+/* Hover Text States in Dark Mode */
+html.dark .hover\:text-\[\#2F2B28\]:hover,
+html.dark .hover\:text-\[\#5A524A\]:hover,
+html.dark .hover\:text-\[\#6E655F\]:hover,
+html.dark .hover\:text-\[\#7D7368\]:hover {
+  color: #FAF6F0 !important;
+}
+
+html.dark .hover\:text-\[\#B05C37\]:hover {
+  color: #F0A27B !important;
+}
+
+html.dark .hover\:text-\[\#9E3F38\]:hover {
+  color: #F58E86 !important;
+}
+
+/* 6. Borders & Dividers in Dark Mode */
+html.dark .border-\[\#D8CFC2\],
+html.dark .border-\[\#DCD3C6\],
+html.dark .border-\[\#DDD4C6\],
+html.dark .border-\[\#DED6CA\],
+html.dark .border-\[\#DED8CE\],
+html.dark .border-\[\#DFD8CE\],
+html.dark .border-\[\#E0D9CE\],
+html.dark .border-\[\#E2D9CC\],
+html.dark .border-\[\#E2DAD0\],
+html.dark .border-\[\#E2DBD0\],
+html.dark .border-\[\#E4DDD3\],
+html.dark .border-\[\#E5DEC9\],
+html.dark .border-\[\#E5DEC9\]\/90,
+html.dark .border-\[\#E6DFD3\],
+html.dark .border-\[\#E6DFD5\],
+html.dark .border-\[\#E8E0D4\],
+html.dark .border-\[\#E8E0D5\],
+html.dark .border-\[\#E8E2D8\],
+html.dark .border-\[\#E8E2D9\],
+html.dark .border-\[\#EAE4DC\],
+html.dark .border-\[\#ECE7DF\],
+html.dark .border-\[\#EDE6DC\] {
+  border-color: #342E29 !important;
+}
+
+html.dark .border-\[\#EFEAE1\],
+html.dark .border-\[\#F2EFE9\],
+html.dark .border-\[\#F3EFE8\],
+html.dark .border-\[\#F4F0E8\] {
+  border-color: #292420 !important;
+}
+
+html.dark .divide-\[\#F4F0E8\] > :not(:last-child),
+html.dark .divide-\[\#F2EFE9\] > :not(:last-child),
+html.dark .divide-\[\#F2ECE3\] > :not(:last-child) {
+  border-color: #2A2521 !important;
+}
+
+html.dark .border-\[\#E5C5AF\] {
+  border-color: #543828 !important;
+}
+
+html.dark .border-\[\#B8DEC0\],
+html.dark .border-\[\#DCE6DA\] {
+  border-color: #2A4735 !important;
+}
+
+html.dark .hover\:border-\[\#D6CBB9\]:hover {
+  border-color: #4D443C !important;
+}
+
+/* 7. Component-Specific Dark Mode Adaptations */
+
+/* Unchecked Checkboxes */
+html.dark [role="checkbox"][aria-checked="false"],
+html.dark [data-demo-checkbox="false"] {
+  background-color: #26221E !important;
+  border-color: #4E453C !important;
+}
+
+/* Pastel Day Column Headers: keep warm pastel saturation balanced with crisp dark espresso text */
+html.dark [data-day-header="true"] {
+  filter: saturate(0.85) brightness(0.88);
+}
+
+html.dark [data-day-header="true"] .text-\[\#332C27\] {
+  color: #1F1A17 !important;
+}
+
+html.dark [data-day-header="true"] .text-\[\#594E45\],
+html.dark [data-day-header="true"] .text-\[\#4D433B\] {
+  color: #3D332C !important;
+}
+
+/* Category Badges in Dark Mode */
+html.dark [data-category-badge="Work"] {
+  background-color: #382318 !important;
+  color: #F4A67E !important;
+  border-color: #543524 !important;
+}
+
+html.dark [data-category-badge="Personal"] {
+  background-color: #2A223D !important;
+  color: #C9BDF5 !important;
+  border-color: #41355E !important;
+}
+
+html.dark [data-category-badge="Health"] {
+  background-color: #1A3023 !important;
+  color: #8ADBA8 !important;
+  border-color: #2B4D39 !important;
+}
+
+html.dark [data-category-badge="Finance"] {
+  background-color: #362B14 !important;
+  color: #F2CB74 !important;
+  border-color: #52411F !important;
+}
+
+html.dark [data-category-badge="Home"] {
+  background-color: #1B2B3B !important;
+  color: #93C5F2 !important;
+  border-color: #2B445C !important;
+}
+
+html.dark [data-category-badge="Growth"] {
+  background-color: #381F2C !important;
+  color: #F2A2C6 !important;
+  border-color: #542F43 !important;
+}
+
+/* Priority Pills in Dark Mode */
+html.dark [data-priority-pill="High"] {
+  background-color: #3B201E !important;
+  color: #F59D96 !important;
+}
+
+html.dark [data-priority-pill="Med"] {
+  background-color: #382B16 !important;
+  color: #F2C879 !important;
+}
+
+html.dark [data-priority-pill="Low"] {
+  background-color: #1B3023 !important;
+  color: #88D9A4 !important;
+}
+
+/* Status Pills in Dark Mode */
+html.dark [data-status-pill="To Do"] {
+  background-color: #2D2925 !important;
+  color: #C7BEB4 !important;
+}
+
+html.dark [data-status-pill="In Progress"] {
+  background-color: #1C2C3B !important;
+  color: #94C4F0 !important;
+}
+
+html.dark [data-status-pill="Done"] {
+  background-color: #1B3023 !important;
+  color: #88D9A4 !important;
+}
+
+/* Donut Chart Rings */
+.donut-track-ring {
+  stroke: var(--donut-track-stroke);
+}
+
+.donut-progress-ring {
+  stroke: var(--donut-progress-stroke);
+}
+
+/* ==========================================================================
+   FULLSCREEN / PRESENTATION MODE
+   ========================================================================== */
+html[data-presentation-mode="true"] {
+  --navbar-height: 0px;
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+}
+
+html[data-presentation-mode="true"] body {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100% !important;
+}
+
+html[data-presentation-mode="true"] [data-presentation-hide="true"] {
+  display: none !important;
+}
+
+html[data-presentation-mode="true"] [data-browser-chrome-bar="true"] {
+  padding-right: 8.5rem !important;
+}
+
+@media (min-width: 640px) {
+  html[data-presentation-mode="true"] [data-browser-chrome-bar="true"] {
+    padding-right: 11.5rem !important;
+  }
+}
+
+html[data-presentation-mode="true"] [data-browser-content-area="true"] {
+  overflow: hidden !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
