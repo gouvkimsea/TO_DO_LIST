@@ -127,6 +127,23 @@ import { EverythingYouGetPage } from './pages/EverythingYouGetPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { SharedDashboardPageProps } from './pages/types';
 import { PomodoroProvider } from './components/PomodoroTimer';
+import {
+  PWAHeaderControls,
+  PWAOfflineAndSyncBanner,
+  SyncNotificationState,
+} from './components/PWAStatusAndInstallBar';
+import {
+  computeDashboardStateChecksum,
+  enqueueOfflineSyncChange,
+  getOfflineSyncQueue,
+  loadSnapshotFromIndexedDB,
+  registerAppServiceWorker,
+  saveRemoteBaseline,
+  saveSnapshotToIndexedDB,
+  synchronizePendingOfflineChanges,
+  verifyNetworkConnection,
+  warmServiceWorkerActiveResources,
+} from './utils/offlineStorage';
 
 const STORAGE_KEY = 'interactive_todo_dashboard_state_v1';
 const BASE_PRODUCTION_URL =
@@ -269,6 +286,37 @@ export default function App() {
   const [saveToast, setSaveToast] = useState<{ message: string; shortcut?: string } | null>(null);
   const saveToastTimerRef = useRef<number | null>(null);
 
+  // PWA & Offline Synchronization State
+  const [isOnline, setIsOnline] = useState<boolean>(() =>
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
+  const [swOfflineReady, setSwOfflineReady] = useState<boolean>(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [idbRevision, setIdbRevision] = useState<number>(1);
+  const [syncNotification, setSyncNotification] =
+    useState<SyncNotificationState | null>(null);
+  const syncNotificationTimerRef = useRef<number | null>(null);
+  const lastInitialChecksumRef = useRef<string | null>(null);
+  const isHydratingFromIdbRef = useRef<boolean>(false);
+
+  const showSyncToast = useCallback(
+    (next: SyncNotificationState, durationMs = 4200) => {
+      setSyncNotification(next);
+      if (typeof window !== 'undefined') {
+        if (syncNotificationTimerRef.current !== null) {
+          window.clearTimeout(syncNotificationTimerRef.current);
+        }
+        syncNotificationTimerRef.current = window.setTimeout(() => {
+          setSyncNotification(null);
+          syncNotificationTimerRef.current = null;
+        }, durationMs);
+      }
+    },
+    []
+  );
+
   // Sync colorScheme with DOM and listen for system preference changes if no explicit user preference is stored
   useEffect(() => {
     applyColorSchemeToDocument(colorScheme);
@@ -356,12 +404,26 @@ export default function App() {
     }
   }, []);
 
-  // Auto-save to localStorage
+  // Register PWA Service Worker & Hydrate from IndexedDB on initial mount
   useEffect(() => {
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({
+    void registerAppServiceWorker(
+      () => {
+        setSwOfflineReady(true);
+      },
+      () => {
+        setSwOfflineReady(true);
+      }
+    );
+
+    void (async () => {
+      const existingQueue = await getOfflineSyncQueue();
+      setPendingSyncCount(existingQueue.length);
+
+      const idbSnapshot = await loadSnapshotFromIndexedDB();
+      if (idbSnapshot) {
+        setIdbRevision(idbSnapshot.revision);
+        setLastSyncedAt(idbSnapshot.updatedAt);
+        const localCurrentChecksum = computeDashboardStateChecksum({
           columns,
           detailedTasks,
           monthlyGoals,
@@ -369,11 +431,194 @@ export default function App() {
           archivedTasks,
           activeTheme,
           customCategories,
-        })
-      );
+        });
+        lastInitialChecksumRef.current = idbSnapshot.checksum;
+        if (idbSnapshot.checksum !== localCurrentChecksum) {
+          isHydratingFromIdbRef.current = true;
+          setTaskSnapshot({
+            columns: idbSnapshot.payload.columns,
+            detailedTasks: idbSnapshot.payload.detailedTasks,
+            archivedTasks: idbSnapshot.payload.archivedTasks,
+          });
+          setMonthlyGoals(idbSnapshot.payload.monthlyGoals);
+          setYearlyGoals(idbSnapshot.payload.yearlyGoals);
+          setActiveTheme(idbSnapshot.payload.activeTheme);
+          setCustomCategories(idbSnapshot.payload.customCategories);
+        }
+      } else {
+        const payload = {
+          columns,
+          detailedTasks,
+          monthlyGoals,
+          yearlyGoals,
+          archivedTasks,
+          activeTheme,
+          customCategories,
+        };
+        const saved = await saveSnapshotToIndexedDB(payload, 1);
+        lastInitialChecksumRef.current = saved.checksum;
+        setIdbRevision(saved.revision);
+        if (typeof navigator === 'undefined' || navigator.onLine) {
+          const baseline = await saveRemoteBaseline(payload, saved.revision);
+          setLastSyncedAt(baseline.lastSyncedAt);
+        }
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const runPendingOfflineSync = useCallback(
+    async (triggeredManually = false) => {
+      setIsSyncing(true);
+      try {
+        const result = await synchronizePendingOfflineChanges({
+          isOnlineCheck: () =>
+            typeof navigator !== 'undefined' ? navigator.onLine : true,
+        });
+
+        setPendingSyncCount(result.remainingCount);
+        if (result.lastSyncedAt) {
+          setLastSyncedAt(result.lastSyncedAt);
+        }
+
+        if (result.status === 'synced') {
+          if (result.resolvedPayload) {
+            isHydratingFromIdbRef.current = true;
+            setTaskSnapshot({
+              columns: result.resolvedPayload.columns,
+              detailedTasks: result.resolvedPayload.detailedTasks,
+              archivedTasks: result.resolvedPayload.archivedTasks,
+            });
+            setMonthlyGoals(result.resolvedPayload.monthlyGoals);
+            setYearlyGoals(result.resolvedPayload.yearlyGoals);
+            setActiveTheme(result.resolvedPayload.activeTheme);
+            setCustomCategories(result.resolvedPayload.customCategories);
+          }
+          showSyncToast({
+            type: 'success',
+            message: `Synchronized ${result.syncedCount} offline change${
+              result.syncedCount === 1 ? '' : 's'
+            }`,
+            detail:
+              result.conflictSummary ||
+              'All local IndexedDB edits are up to date.',
+          });
+        } else if (result.status === 'failed') {
+          showSyncToast({
+            type: 'error',
+            message: 'Synchronization paused — still offline',
+            detail:
+              result.errorMessage ||
+              'Your changes are safely stored in IndexedDB and will sync when online.',
+          });
+        } else if (result.status === 'noop' && triggeredManually) {
+          showSyncToast({
+            type: 'success',
+            message: 'Connection verified — all tasks synchronized',
+            detail: 'IndexedDB and Service Worker caches are up to date.',
+          });
+        }
+      } finally {
+        setIsSyncing(false);
+      }
+    },
+    [setTaskSnapshot, showSyncToast]
+  );
+
+  const handleRetryConnectionAndSync = useCallback(async () => {
+    setIsSyncing(true);
+    const connected = await verifyNetworkConnection();
+    setIsOnline(connected);
+    if (!connected) {
+      setIsSyncing(false);
+      const q = await getOfflineSyncQueue();
+      setPendingSyncCount(q.length);
+      showSyncToast({
+        type: 'error',
+        message: 'Still offline — connection unavailable',
+        detail: `Your tasks and notes remain safely stored in IndexedDB (${q.length} queued for sync).`,
+      });
+      return;
+    }
+    warmServiceWorkerActiveResources();
+    await runPendingOfflineSync(true);
+  }, [runPendingOfflineSync, showSyncToast]);
+
+  // Listen to browser online / offline events automatically
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleOnline = () => {
+      setIsOnline(true);
+      warmServiceWorkerActiveResources();
+      void runPendingOfflineSync(false);
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [runPendingOfflineSync]);
+
+  // Auto-save to localStorage AND IndexedDB (queueing changes when offline)
+  useEffect(() => {
+    const payload = {
+      columns,
+      detailedTasks,
+      monthlyGoals,
+      yearlyGoals,
+      archivedTasks,
+      activeTheme,
+      customCategories,
+    };
+
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {
       // ignore quota errors
     }
+
+    const currentChecksum = computeDashboardStateChecksum(payload);
+    if (lastInitialChecksumRef.current === null) {
+      lastInitialChecksumRef.current = currentChecksum;
+      return;
+    }
+
+    if (isHydratingFromIdbRef.current) {
+      isHydratingFromIdbRef.current = false;
+      lastInitialChecksumRef.current = currentChecksum;
+      return;
+    }
+
+    if (currentChecksum === lastInitialChecksumRef.current) {
+      return;
+    }
+    lastInitialChecksumRef.current = currentChecksum;
+
+    void (async () => {
+      const currentlyOnline =
+        typeof navigator !== 'undefined' ? navigator.onLine : isOnline;
+      if (!currentlyOnline) {
+        const queued = await enqueueOfflineSyncChange(
+          payload,
+          'Modified tasks while offline'
+        );
+        setIdbRevision(queued.item.revision);
+        setPendingSyncCount(queued.queueLength);
+      } else {
+        const saved = await saveSnapshotToIndexedDB(payload);
+        setIdbRevision(saved.revision);
+        const baseline = await saveRemoteBaseline(payload, saved.revision);
+        setLastSyncedAt(baseline.lastSyncedAt);
+      }
+    })();
   }, [
     columns,
     detailedTasks,
@@ -382,6 +627,7 @@ export default function App() {
     archivedTasks,
     activeTheme,
     customCategories,
+    isOnline,
   ]);
 
   const handleExplicitSave = useCallback(
@@ -1734,6 +1980,16 @@ export default function App() {
                 >
                   <Search className="w-3.5 h-3.5" />
                 </button>
+                <PWAHeaderControls
+                  isOnline={isOnline}
+                  isSyncing={isSyncing}
+                  pendingSyncCount={pendingSyncCount}
+                  swOfflineReady={swOfflineReady}
+                  lastSyncedAt={lastSyncedAt}
+                  idbRevision={idbRevision}
+                  onRetryConnectionAndSync={handleRetryConnectionAndSync}
+                />
+
                 <button
                   type="button"
                   onClick={() => void handleEnterPresentationMode()}
@@ -1797,6 +2053,17 @@ export default function App() {
               </div>
             </div>
           </header>
+        )}
+
+        {!isPresentationMode && (
+          <PWAOfflineAndSyncBanner
+            isOnline={isOnline}
+            isSyncing={isSyncing}
+            pendingSyncCount={pendingSyncCount}
+            syncNotification={syncNotification}
+            onRetryConnectionAndSync={handleRetryConnectionAndSync}
+            onDismissNotification={() => setSyncNotification(null)}
+          />
         )}
 
         {isPresentationMode && (

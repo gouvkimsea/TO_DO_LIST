@@ -1,19 +1,62 @@
 {
+  "id": "/",
   "name": "Interactive Weekly To-Do Dashboard",
   "short_name": "Weekly To-Do",
-  "description": "A self-saving, interactive Weekly, Monthly, and Yearly To-Do List dashboard with color themes, live progress charts, and spreadsheet tracker.",
+  "description": "A self-saving, offline-ready Weekly, Monthly, and Yearly To-Do List dashboard with 4 color themes, live progress charts, and spreadsheet tracker.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#FAF6F0",
   "theme_color": "#FAF6F0",
+  "categories": ["productivity", "utilities", "lifestyle"],
   "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
     {
       "src": "/favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Weekly Columns",
+      "short_name": "Week View",
+      "description": "Open the 7-day weekly columns planner",
+      "url": "/daily-columns",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Live Progress & Heatmap",
+      "short_name": "Progress",
+      "description": "View weekly completion analytics and D3 intensity heatmap",
+      "url": "/live-progress",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Monthly & Yearly Goals",
+      "short_name": "Goals",
+      "description": "Track monthly and yearly milestones",
+      "url": "/monthly-yearly",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }
-
