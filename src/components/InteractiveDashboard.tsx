@@ -14,6 +14,7 @@ import {
   Repeat,
   ClipboardPaste,
   Tag,
+  Clock,
 } from 'lucide-react';
 import {
   DndContext,
@@ -77,6 +78,8 @@ import {
   parseBulkImportLines,
   sanitizeCustomCategoryName,
   sanitizeTaskText,
+  buildDayTimeBlockTimeline,
+  resolveDailyTaskTimeBlock,
 } from '../utils/todoLogic';
 import { VoiceMicButton } from './VoiceMicButton';
 import { PomodoroTimer } from './PomodoroTimer';
@@ -132,6 +135,15 @@ interface InteractiveDashboardProps {
   ) => number;
   onOpenBulkImportModal?: (defaultDayId?: string) => void;
   onUpdateDailyTaskNotes?: (dayId: string, taskId: string, notes: string) => void;
+  onUpdateDailyTaskTimeBlock?: (
+    dayId: string,
+    taskId: string,
+    startTime: string,
+    endTime: string
+  ) => {
+    success: boolean;
+    error?: string;
+  };
   enableTaskNotes?: boolean;
   onReorderOrMoveDailyTask?: (activeTaskId: string, overId: string) => void;
   enableDragAndDrop?: boolean;
@@ -223,6 +235,15 @@ interface SortableDailyTaskRowProps {
   ) => void;
   onUpdateDailyTaskText: (dayId: string, taskId: string, text: string) => void;
   onUpdateDailyTaskNotes?: (dayId: string, taskId: string, notes: string) => void;
+  onUpdateDailyTaskTimeBlock?: (
+    dayId: string,
+    taskId: string,
+    startTime: string,
+    endTime: string
+  ) => {
+    success: boolean;
+    error?: string;
+  };
   onArchiveSingleDailyTask?: (dayId: string, taskId: string) => void;
   onQuickSave?: () => void;
   searchQuery?: string;
@@ -246,11 +267,19 @@ const SortableDailyTaskRow: React.FC<SortableDailyTaskRowProps> = ({
   onSetDailyRecurring,
   onUpdateDailyTaskText,
   onUpdateDailyTaskNotes,
+  onUpdateDailyTaskTimeBlock,
   onArchiveSingleDailyTask,
   onQuickSave,
   searchQuery,
 }) => {
   const [isNotesExpanded, setIsNotesExpanded] = useState<boolean>(false);
+  const resolvedTimeBlock = resolveDailyTaskTimeBlock(task);
+  const [draftStart, setDraftStart] = useState<string>(
+    resolvedTimeBlock.startTime || '09:00'
+  );
+  const [draftEnd, setDraftEnd] = useState<string>(
+    resolvedTimeBlock.endTime || '10:00'
+  );
 
   const {
     attributes,
@@ -591,6 +620,24 @@ const SortableDailyTaskRow: React.FC<SortableDailyTaskRowProps> = ({
         )}
       </div>
 
+      {/* Time-Block Sub-Row Badge (keeps main task input spacious & readable) */}
+      {!isBlank && !compact && resolvedTimeBlock.isTimeBlocked && (
+        <div className="pl-7 pr-1 pb-0.5 flex items-center justify-between gap-1">
+          <button
+            type="button"
+            onClick={() => setIsNotesExpanded((prev) => !prev)}
+            data-testid={`${instancePrefix}-timeblock-badge-${task.id}`}
+            title={`Time Block: ${resolvedTimeBlock.formattedRange} (${resolvedTimeBlock.formattedDuration}) — Click to edit`}
+            className="rounded px-1.5 py-0.5 text-[8.5px] font-bold tracking-tight shrink-0 leading-none border bg-[#EDF5F0] text-[#1F5E3B] border-[#B8DEC6] inline-flex items-center gap-1 cursor-pointer hover:bg-[#E1EFE6] transition-colors"
+          >
+            <Clock className="w-2.5 h-2.5 shrink-0" />
+            <span className="tabular-nums">
+              {resolvedTimeBlock.formattedRange} ({resolvedTimeBlock.formattedDuration})
+            </span>
+          </button>
+        </div>
+      )}
+
       {/* Matched Note Snippet Preview (Shown when search keyword matches in note content) */}
       {!compact && matchDetail?.matches && matchDetail.field === 'notes' && matchDetail.snippet && (
         <button
@@ -730,6 +777,65 @@ const SortableDailyTaskRow: React.FC<SortableDailyTaskRowProps> = ({
                       </button>
                     );
                   })}
+                </div>
+              )}
+
+              {/* Time-Blocking Controls inside Task Drawer */}
+              {onUpdateDailyTaskTimeBlock && !isBlank && (
+                <div
+                  data-testid={`${instancePrefix}-notes-timeblock-picker-${task.id}`}
+                  className="flex flex-wrap items-center justify-between gap-1.5 pt-1.5 border-t border-[#ECE5DA]"
+                >
+                  <div className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-[#266841]">
+                    <Clock className="w-2.5 h-2.5" />
+                    <span>Time Block:</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <input
+                      type="time"
+                      value={draftStart}
+                      onChange={(e) => setDraftStart(e.target.value)}
+                      aria-label={`Start time for ${task.text}`}
+                      data-testid={`${instancePrefix}-timeblock-start-${task.id}`}
+                      className="bg-white border border-[#DED8CE] rounded px-1.5 py-0.5 text-[10px] font-bold text-[#2F2B28] tabular-nums"
+                    />
+                    <span className="text-[10px] text-[#8A8279]">–</span>
+                    <input
+                      type="time"
+                      value={draftEnd}
+                      onChange={(e) => setDraftEnd(e.target.value)}
+                      aria-label={`End time for ${task.text}`}
+                      data-testid={`${instancePrefix}-timeblock-end-${task.id}`}
+                      className="bg-white border border-[#DED8CE] rounded px-1.5 py-0.5 text-[10px] font-bold text-[#2F2B28] tabular-nums"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateDailyTaskTimeBlock(
+                          dayId,
+                          task.id,
+                          draftStart,
+                          draftEnd
+                        )
+                      }
+                      data-testid={`${instancePrefix}-timeblock-save-${task.id}`}
+                      className="px-2 py-0.5 rounded bg-[#2F2B28] text-white text-[9px] font-bold cursor-pointer"
+                    >
+                      Set
+                    </button>
+                    {resolvedTimeBlock.isTimeBlocked && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onUpdateDailyTaskTimeBlock(dayId, task.id, '', '')
+                        }
+                        data-testid={`${instancePrefix}-timeblock-clear-${task.id}`}
+                        className="px-1.5 py-0.5 rounded text-[9px] font-bold text-[#9B3338] hover:bg-[#F8D5D5]/50 cursor-pointer"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -969,6 +1075,7 @@ export const InteractiveDashboard: React.FC<InteractiveDashboardProps> = ({
   onBulkImportTasks,
   onOpenBulkImportModal,
   onUpdateDailyTaskNotes,
+  onUpdateDailyTaskTimeBlock,
   enableTaskNotes = true,
   onReorderOrMoveDailyTask,
   enableDragAndDrop = false,
@@ -1677,6 +1784,7 @@ export const InteractiveDashboard: React.FC<InteractiveDashboardProps> = ({
               type="button"
               onClick={() => handleOpenBulkImport(displayedColumns[0]?.id || 'mon')}
               data-testid={`${instancePrefix}-bulk-import-btn`}
+              data-custom-btn="secondary"
               title="Paste a multi-line list of tasks to add multiple items at once to a specific day column"
               className="inline-flex items-center gap-1.5 bg-[#FAF4EC] hover:bg-[#F3E6D6] border border-[#E5CFB8] rounded-full px-3 py-1 text-[11px] font-bold text-[#9A4E28] transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
@@ -1690,6 +1798,7 @@ export const InteractiveDashboard: React.FC<InteractiveDashboardProps> = ({
               type="button"
               onClick={onArchiveCompletedTasks}
               data-testid={`${instancePrefix}-archive-completed-btn`}
+              data-custom-btn="secondary"
               title="Move all completed tasks to Archive to declutter the daily view"
               className="inline-flex items-center gap-1.5 bg-[#F5DFD0] hover:bg-[#EED2BF] border border-[#E5C5AF] rounded-full px-3 py-1 text-[11px] font-bold text-[#9A4E28] transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
@@ -1703,6 +1812,7 @@ export const InteractiveDashboard: React.FC<InteractiveDashboardProps> = ({
               type="button"
               onClick={onOpenArchiveModal}
               data-testid={`${instancePrefix}-open-archive-btn`}
+              data-custom-btn="secondary"
               title="Open Completed Task Archive (Press A)"
               className="inline-flex items-center gap-1.5 bg-white hover:bg-[#F3EFE9] border border-[#E0D9CE] rounded-full px-3 py-1 text-[11px] font-semibold text-[#5A534C] transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
@@ -1716,6 +1826,7 @@ export const InteractiveDashboard: React.FC<InteractiveDashboardProps> = ({
               <button
                 type="button"
                 data-testid={`${instancePrefix}-bulk-actions-btn`}
+                data-custom-btn="secondary"
                 aria-haspopup="menu"
                 aria-expanded={bulkMenuOpen}
                 onClick={() => setBulkMenuOpen((prev) => !prev)}
@@ -1803,6 +1914,7 @@ export const InteractiveDashboard: React.FC<InteractiveDashboardProps> = ({
           <button
             type="button"
             onClick={onResetWeek}
+            data-custom-btn="secondary"
             className={`inline-flex items-center gap-1.5 bg-white hover:bg-[#F3EFE9] border border-[#E0D9CE] rounded-full font-semibold text-[#5A534C] transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               compact ? 'px-2.5 py-0.5 text-[9px]' : 'px-3 py-1 text-[11px]'
             }`}
@@ -1831,6 +1943,7 @@ export const InteractiveDashboard: React.FC<InteractiveDashboardProps> = ({
             onClick={() => setActiveTagFilter('All')}
             aria-pressed={activeTagFilter === 'All'}
             data-testid={`${instancePrefix}-tag-filter-All`}
+            data-custom-btn={activeTagFilter === 'All' ? 'primary' : 'secondary'}
             className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer whitespace-nowrap shrink-0 leading-none tabular-nums ${
               activeTagFilter === 'All'
                 ? 'bg-[#2F2B28] text-white border-[#2F2B28] shadow-2xs'
@@ -2264,6 +2377,9 @@ export const InteractiveDashboard: React.FC<InteractiveDashboardProps> = ({
                             onSetDailyRecurring={onSetDailyRecurring}
                             onUpdateDailyTaskText={onUpdateDailyTaskText}
                             onUpdateDailyTaskNotes={onUpdateDailyTaskNotes}
+                            onUpdateDailyTaskTimeBlock={
+                              onUpdateDailyTaskTimeBlock
+                            }
                             onArchiveSingleDailyTask={onArchiveSingleDailyTask}
                             onQuickSave={onQuickSave}
                             searchQuery={searchQuery}
@@ -2272,6 +2388,62 @@ export const InteractiveDashboard: React.FC<InteractiveDashboardProps> = ({
                       )}
                     </DroppableDayTasksContainer>
                   </SortableContext>
+
+                  {/* Vertical Timeline alongside/below DayColumn Task List (on non-compact views) */}
+                  {!compact && (() => {
+                    const dayTimeline = buildDayTimeBlockTimeline(
+                      originalColumn.tasks
+                    );
+                    if (dayTimeline.scheduledBlocks.length === 0) return null;
+                    return (
+                      <div
+                        data-testid={`${instancePrefix}-day-timeline-${col.id}`}
+                        className="px-2.5 py-2 bg-[#F7F4EE] border-t border-[#ECE6DC]"
+                      >
+                        <div className="flex items-center justify-between gap-1 mb-1">
+                          <span className="text-[8.5px] font-extrabold uppercase tracking-wider text-[#6E655D] inline-flex items-center gap-1">
+                            <Clock className="w-2.5 h-2.5 text-[#266841]" />
+                            <span>
+                              Vertical Timeline ({dayTimeline.totalScheduledBlocks})
+                            </span>
+                          </span>
+                          <span className="text-[8.5px] font-bold text-[#266841]">
+                            {dayTimeline.totalScheduledFormatted}
+                          </span>
+                        </div>
+                        <div className="relative pl-3 border-l-2 border-[#D5CDC0] space-y-1">
+                          {dayTimeline.scheduledBlocks.map((block) => (
+                            <div
+                              key={block.taskId}
+                              data-testid={`${instancePrefix}-day-timeline-block-${block.taskId}`}
+                              className="relative flex items-center justify-between gap-1 px-1.5 py-0.5 rounded bg-white border border-[#E5DEC9] text-[9px]"
+                            >
+                              <span
+                                className="w-1.5 h-1.5 rounded-full absolute -left-[15px] top-1/2 -translate-y-1/2 ring-2 ring-[#F7F4EE]"
+                                style={{
+                                  backgroundColor: block.completed
+                                    ? theme.checkboxBg
+                                    : PRIORITY_DOT_COLORS[block.priority],
+                                }}
+                              />
+                              <span className="font-extrabold text-[#4A433C] tabular-nums shrink-0">
+                                {block.startTime}–{block.endTime}
+                              </span>
+                              <span
+                                className={`truncate font-semibold flex-1 ${
+                                  block.completed
+                                    ? 'line-through text-[#9C948B]'
+                                    : 'text-[#2F2B28]'
+                                }`}
+                              >
+                                {block.text}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Column Progress Bar */}
                   <div

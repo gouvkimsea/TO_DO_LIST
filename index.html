@@ -7,8 +7,9 @@
     <meta name="description" content="A self-saving, interactive Weekly, Monthly, and Yearly To-Do List dashboard with 4 color themes, live progress charts, and spreadsheet tracker." />
     <meta name="robots" content="index, follow" />
     <meta name="theme-color" content="#FAF6F0" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" href="/assets/aistudio/image_a84fc237.png" />
+    <link rel="alternate icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/aistudio/image_a84fc237.png" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="canonical" href="https://interactive-todo-dashboard.com/" />
 
@@ -23,6 +24,7 @@
     <meta property="og:site_name" content="Interactive Weekly To-Do Dashboard" />
     <meta property="og:title" content="Interactive Weekly To-Do Dashboard" />
     <meta property="og:description" content="A self-saving, interactive Weekly, Monthly, and Yearly To-Do List dashboard with 4 color themes, live progress charts, and spreadsheet tracker." />
+    <meta property="og:image" content="/assets/aistudio/image_a84fc237.png" />
     <meta property="og:url" content="/" />
     <meta property="og:locale" content="en_US" />
 
@@ -30,6 +32,7 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Interactive Weekly To-Do Dashboard" />
     <meta name="twitter:description" content="A self-saving, interactive Weekly, Monthly, and Yearly To-Do List dashboard with 4 color themes, live progress charts, and spreadsheet tracker." />
+    <meta name="twitter:image" content="/assets/aistudio/image_a84fc237.png" />
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -63,7 +66,7 @@
           var stored = localStorage.getItem('interactive_todo_color_scheme_v1');
           var isDark =
             stored === 'dark' ||
-            (stored !== 'light' &&
+            (stored === 'system' &&
               window.matchMedia &&
               window.matchMedia('(prefers-color-scheme: dark)').matches);
           var scheme = isDark ? 'dark' : 'light';
@@ -71,6 +74,10 @@
           root.classList.toggle('dark', isDark);
           root.classList.toggle('light', !isDark);
           root.setAttribute('data-color-scheme', scheme);
+          root.setAttribute(
+            'data-color-scheme-preference',
+            stored === 'dark' || stored === 'system' ? stored : 'light'
+          );
           root.style.colorScheme = scheme;
         } catch (e) {}
       })();

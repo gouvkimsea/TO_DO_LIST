@@ -4,6 +4,10 @@ import { motion } from 'framer-motion';
 import { BrowserFrame } from '../components/BrowserFrame';
 import { LiveProgressBoard } from '../components/LiveProgressSection';
 import { WeeklyProgressTrendsChart } from '../components/WeeklyProgressTrendsChart';
+import { DailyTaskProgressLineChart } from '../components/DailyTaskProgressLineChart';
+import { DailyTipCard } from '../components/DailyTipCard';
+import { DashboardDayColumnsSection } from '../components/DashboardDayColumnsSection';
+import { InteractiveCalendarSection } from '../components/InteractiveCalendarSection';
 import { RouterLink } from '../components/RouterLink';
 import { PomodoroTimer } from '../components/PomodoroTimer';
 import {
@@ -26,18 +30,30 @@ export const DashboardPage: React.FC<SharedDashboardPageProps> = ({
   onAddCustomCategory,
   onRemoveCustomCategory,
   onSelectTheme,
+  onDateChange,
+  onToggleDailyTask,
+  onCycleDailyPriority,
+  onUpdateDailyTaskText,
+  onUpdateDailyTaskNotes,
+  onUpdateDailyTaskTimeBlock,
   onToggleDetailedTask,
   onCycleDetailedPriority,
   onCycleDetailedStatus,
   onCycleDetailedCategory,
   onUpdateDetailedText,
+  onAddCalendarTask,
+  onUpdateCalendarTask,
+  onDeleteCalendarTask,
   onArchiveCompletedTasks,
   onArchiveSingleDetailedTask,
   onOpenArchiveModal,
   onOpenBulkImportModal,
+  onQuickSave,
   onNavigate,
 }) => {
-  const [chartTab, setChartTab] = useState<'breakdown' | 'trends'>('breakdown');
+  const [chartTab, setChartTab] = useState<'breakdown' | 'calendar' | 'trends'>(
+    'breakdown'
+  );
 
   // Capture once per browser session whether this is the initial page load
   const shouldAnimateOnInitialLoadRef = useRef<boolean | null>(null);
@@ -92,7 +108,8 @@ export const DashboardPage: React.FC<SharedDashboardPageProps> = ({
               <button
                 type="button"
                 onClick={() => setChartTab('breakdown')}
-                className={`text-[10px] sm:text-[11px] font-bold px-3 py-1 rounded-full transition-all cursor-pointer whitespace-nowrap ${
+                data-testid="dashboard-tab-breakdown"
+                className={`text-[10px] sm:text-[11px] font-bold px-2.5 sm:px-3 py-1 rounded-full transition-all cursor-pointer whitespace-nowrap ${
                   chartTab === 'breakdown'
                     ? 'bg-white text-[#2F2B28] shadow-xs'
                     : 'text-[#6E665E] hover:text-[#2F2B28]'
@@ -102,8 +119,21 @@ export const DashboardPage: React.FC<SharedDashboardPageProps> = ({
               </button>
               <button
                 type="button"
+                onClick={() => setChartTab('calendar')}
+                data-testid="dashboard-tab-calendar"
+                className={`text-[10px] sm:text-[11px] font-bold px-2.5 sm:px-3 py-1 rounded-full transition-all cursor-pointer whitespace-nowrap ${
+                  chartTab === 'calendar'
+                    ? 'bg-white text-[#2F2B28] shadow-xs'
+                    : 'text-[#6E665E] hover:text-[#2F2B28]'
+                }`}
+              >
+                Calendar
+              </button>
+              <button
+                type="button"
                 onClick={() => setChartTab('trends')}
-                className={`text-[10px] sm:text-[11px] font-bold px-3 py-1 rounded-full transition-all cursor-pointer whitespace-nowrap ${
+                data-testid="dashboard-tab-trends"
+                className={`text-[10px] sm:text-[11px] font-bold px-2.5 sm:px-3 py-1 rounded-full transition-all cursor-pointer whitespace-nowrap ${
                   chartTab === 'trends'
                     ? 'bg-white text-[#2F2B28] shadow-xs'
                     : 'text-[#6E665E] hover:text-[#2F2B28]'
@@ -114,42 +144,127 @@ export const DashboardPage: React.FC<SharedDashboardPageProps> = ({
             </div>
           }
         >
-          {chartTab === 'breakdown' ? (
-            <LiveProgressBoard
-              detailedTasks={detailedTasks}
+          {/* Dismissible Daily Tip Card at the top of DashboardPage */}
+          <div className="px-3 sm:px-4 lg:px-5 pt-3 bg-[#FAF7F2]">
+            <DailyTipCard
               metrics={metrics}
+              columns={columns}
+              detailedTasks={detailedTasks}
               activeTheme={activeTheme}
-              searchQuery={searchQuery}
-              archivedCount={archivedCount}
-              customCategories={customCategories}
-              onAddCustomCategory={onAddCustomCategory}
-              onRemoveCustomCategory={onRemoveCustomCategory}
-              onSelectTheme={onSelectTheme}
-              onToggleDetailedTask={onToggleDetailedTask}
-              onCycleDetailedPriority={onCycleDetailedPriority}
-              onCycleDetailedStatus={onCycleDetailedStatus}
-              onCycleDetailedCategory={onCycleDetailedCategory}
-              onUpdateDetailedText={onUpdateDetailedText}
-              onArchiveCompletedTasks={onArchiveCompletedTasks}
-              onArchiveSingleDetailedTask={onArchiveSingleDetailedTask}
-              onOpenArchiveModal={onOpenArchiveModal}
-              onOpenBulkImportModal={onOpenBulkImportModal}
             />
-          ) : (
+          </div>
+
+          {chartTab === 'breakdown' && (
+            <div className="flex-1 flex flex-col">
+              <LiveProgressBoard
+                columns={columns}
+                detailedTasks={detailedTasks}
+                metrics={metrics}
+                activeTheme={activeTheme}
+                searchQuery={searchQuery}
+                archivedCount={archivedCount}
+                customCategories={customCategories}
+                onAddCustomCategory={onAddCustomCategory}
+                onRemoveCustomCategory={onRemoveCustomCategory}
+                onSelectTheme={onSelectTheme}
+                onToggleDetailedTask={onToggleDetailedTask}
+                onCycleDetailedPriority={onCycleDetailedPriority}
+                onCycleDetailedStatus={onCycleDetailedStatus}
+                onCycleDetailedCategory={onCycleDetailedCategory}
+                onUpdateDetailedText={onUpdateDetailedText}
+                onArchiveCompletedTasks={onArchiveCompletedTasks}
+                onArchiveSingleDetailedTask={onArchiveSingleDetailedTask}
+                onOpenArchiveModal={onOpenArchiveModal}
+                onOpenBulkImportModal={onOpenBulkImportModal}
+              />
+              <div className="px-3 sm:px-4 lg:px-5 pb-4 bg-[#FAF7F2] space-y-4">
+                {onAddCalendarTask && onUpdateCalendarTask && onDeleteCalendarTask && (
+                  <InteractiveCalendarSection
+                    columns={columns}
+                    activeTheme={activeTheme}
+                    selectedDate={selectedDate}
+                    customCategories={customCategories}
+                    onDateChange={onDateChange}
+                    onToggleDailyTask={onToggleDailyTask}
+                    onAddCalendarTask={onAddCalendarTask}
+                    onUpdateCalendarTask={onUpdateCalendarTask}
+                    onDeleteCalendarTask={onDeleteCalendarTask}
+                  />
+                )}
+                <DashboardDayColumnsSection
+                  columns={columns}
+                  activeTheme={activeTheme}
+                  customCategories={customCategories}
+                  onToggleDailyTask={onToggleDailyTask}
+                  onCycleDailyPriority={onCycleDailyPriority}
+                  onUpdateDailyTaskText={onUpdateDailyTaskText}
+                  onUpdateDailyTaskNotes={onUpdateDailyTaskNotes}
+                  onUpdateDailyTaskTimeBlock={onUpdateDailyTaskTimeBlock}
+                  onQuickSave={onQuickSave}
+                />
+              </div>
+            </div>
+          )}
+
+          {chartTab === 'calendar' && (
+            <div className="p-3 sm:p-4 lg:p-5 bg-[#FAF7F2] flex-1 flex flex-col gap-4">
+              {onAddCalendarTask && onUpdateCalendarTask && onDeleteCalendarTask && (
+                <InteractiveCalendarSection
+                  columns={columns}
+                  activeTheme={activeTheme}
+                  selectedDate={selectedDate}
+                  customCategories={customCategories}
+                  onDateChange={onDateChange}
+                  onToggleDailyTask={onToggleDailyTask}
+                  onAddCalendarTask={onAddCalendarTask}
+                  onUpdateCalendarTask={onUpdateCalendarTask}
+                  onDeleteCalendarTask={onDeleteCalendarTask}
+                />
+              )}
+              <DashboardDayColumnsSection
+                columns={columns}
+                activeTheme={activeTheme}
+                customCategories={customCategories}
+                onToggleDailyTask={onToggleDailyTask}
+                onCycleDailyPriority={onCycleDailyPriority}
+                onUpdateDailyTaskText={onUpdateDailyTaskText}
+                onUpdateDailyTaskNotes={onUpdateDailyTaskNotes}
+                onUpdateDailyTaskTimeBlock={onUpdateDailyTaskTimeBlock}
+                onQuickSave={onQuickSave}
+              />
+            </div>
+          )}
+
+          {chartTab === 'trends' && (
             <motion.div
               variants={DASHBOARD_ENTRANCE_ITEM_VARIANTS}
-              className="p-4 sm:p-6 bg-[#FAF7F2] flex-1 flex flex-col gap-3"
+              className="p-4 sm:p-6 bg-[#FAF7F2] flex-1 flex flex-col gap-3.5"
             >
               <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[#ECE7DF]">
                 <span className="text-[10px] font-bold tracking-[0.16em] uppercase text-[#8A8279]">
-                  4-WEEK PRODUCTIVITY TRENDS
+                  4-WEEK PRODUCTIVITY TRENDS &amp; DAILY LOG
                 </span>
                 <PomodoroTimer instanceId="dashboard" />
               </div>
+              <DailyTaskProgressLineChart
+                columns={columns}
+                activeTheme={activeTheme}
+              />
               <WeeklyProgressTrendsChart
                 columns={columns}
                 selectedDate={selectedDate}
                 activeTheme={activeTheme}
+              />
+              <DashboardDayColumnsSection
+                columns={columns}
+                activeTheme={activeTheme}
+                customCategories={customCategories}
+                onToggleDailyTask={onToggleDailyTask}
+                onCycleDailyPriority={onCycleDailyPriority}
+                onUpdateDailyTaskText={onUpdateDailyTaskText}
+                onUpdateDailyTaskNotes={onUpdateDailyTaskNotes}
+                onUpdateDailyTaskTimeBlock={onUpdateDailyTaskTimeBlock}
+                onQuickSave={onQuickSave}
               />
             </motion.div>
           )}
@@ -201,3 +316,4 @@ export const DashboardPage: React.FC<SharedDashboardPageProps> = ({
     </section>
   );
 };
+

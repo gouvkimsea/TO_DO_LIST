@@ -70,7 +70,7 @@ export const BrowserFrame: React.FC<BrowserFrameProps> = ({
           data-presentation-hide={!chromeRightSlot ? 'true' : undefined}
           onDoubleClick={toggleFullscreen}
           title="Mac Window Header — Double-click or tap green button to toggle Full Screen"
-          className={`bg-[#EFEBE4] border-b border-[#E4DDD3] flex items-center justify-between gap-2 px-3 md:px-4 select-none ${
+          className={`bg-[#EFEBE4] border-b border-[#E4DDD3] flex flex-wrap sm:flex-nowrap items-center justify-between gap-1.5 sm:gap-2 px-2.5 sm:px-3 md:px-4 select-none ${
             compact ? 'py-1.5' : 'py-2'
           }`}
         >
@@ -146,10 +146,12 @@ export const BrowserFrame: React.FC<BrowserFrameProps> = ({
             </button>
           </div>
 
-          {/* Centered URL / Search Pill */}
+          {/* Centered URL / Search Pill (hidden on small phones when chromeRightSlot tabs need horizontal space) */}
           <div
             data-presentation-hide="true"
-            className="flex-1 min-w-0 flex justify-center px-1 sm:px-2"
+            className={`${
+              chromeRightSlot ? 'hidden md:flex' : 'flex'
+            } flex-1 min-w-0 justify-center px-1 sm:px-2`}
           >
             <div
               className={`bg-[#F9F7F3] border border-[#E6DFD5] rounded-full w-full max-w-lg text-center truncate text-[#8E877F] font-medium ${
@@ -163,7 +165,7 @@ export const BrowserFrame: React.FC<BrowserFrameProps> = ({
           </div>
 
           {/* Right Slot & Full Screen Expand Button */}
-          <div className="shrink-0 flex items-center gap-1.5">
+          <div className="shrink-0 flex items-center gap-1 sm:gap-1.5 max-w-full overflow-x-auto">
             {topRightBadge && isFullscreen && (
               <div data-presentation-hide="true" className="scale-75 origin-right">
                 {topRightBadge}
@@ -185,7 +187,7 @@ export const BrowserFrame: React.FC<BrowserFrameProps> = ({
                 aria-label={
                   isFullscreen ? 'Exit Full Screen' : 'Make Mac window full screen'
                 }
-                className={`p-1 rounded-full text-[#7A6E63] hover:text-[#2F2B28] hover:bg-[#E4DDD3]/70 transition-colors cursor-pointer flex items-center justify-center ${
+                className={`p-1.5 sm:p-1 rounded-full text-[#7A6E63] hover:text-[#2F2B28] hover:bg-[#E4DDD3]/70 transition-colors cursor-pointer flex items-center justify-center shrink-0 ${
                   isFullscreen ? 'bg-[#E4DDD3] text-[#2F2B28]' : ''
                 }`}
               >

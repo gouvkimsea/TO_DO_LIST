@@ -29,6 +29,7 @@ export const DailyColumnsPage: React.FC<SharedDashboardPageProps> = ({
   onBulkImportTasks,
   onOpenBulkImportModal,
   onUpdateDailyTaskNotes,
+  onUpdateDailyTaskTimeBlock,
   onReorderOrMoveDailyTask,
   onResetWeek,
   onClearCompletedTasks,
@@ -96,6 +97,7 @@ export const DailyColumnsPage: React.FC<SharedDashboardPageProps> = ({
             onBulkImportTasks={onBulkImportTasks}
             onOpenBulkImportModal={onOpenBulkImportModal}
             onUpdateDailyTaskNotes={onUpdateDailyTaskNotes}
+            onUpdateDailyTaskTimeBlock={onUpdateDailyTaskTimeBlock}
             enableTaskNotes
             onReorderOrMoveDailyTask={onReorderOrMoveDailyTask}
             enableDragAndDrop

@@ -1,12 +1,31 @@
 @import "tailwindcss";
 
 @layer base {
+  html,
+  body,
+  #root {
+    max-width: 100%;
+    overflow-x: clip;
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     background-color: #FAF6F0;
     color: #2D2A26;
     transition: background-color 220ms cubic-bezier(0.4, 0, 0.2, 1),
       color 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea,
+  [role="button"],
+  [role="checkbox"] {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
 
   html.dark body {
@@ -579,3 +598,59 @@ html[data-presentation-mode="true"] [data-browser-content-area="true"] {
     scroll-behavior: auto !important;
   }
 }
+
+/* ==========================================================================
+   PERSONAL CUSTOMIZATION & THEME SETTINGS (CSS VARIABLES & SURFACES)
+   ========================================================================== */
+:root {
+  --custom-btn-primary-bg: #C87D55;
+  --custom-btn-secondary-bg: #F2EFE9;
+  --custom-btn-hover-bg: #B0653E;
+  --custom-btn-text: #FFFFFF;
+  --custom-btn-secondary-text: #2F2B28;
+  --custom-bg-position: center;
+  --custom-bg-brightness: 100%;
+  --custom-bg-overlay-opacity: 0.4;
+  --custom-bg-blur: 0px;
+}
+
+/* Translucent stage when custom background image is active */
+html[data-has-custom-bg="true"] .radial-stage-bg {
+  background: transparent !important;
+}
+
+html[data-has-custom-bg="true"] body {
+  background-color: transparent !important;
+}
+
+html[data-has-custom-bg="true"] [data-testid="responsive-top-header"] {
+  backdrop-filter: blur(12px);
+}
+
+/* Custom Button Colors Applied Consistently Across the Application */
+html[data-custom-buttons-active="true"] [data-custom-btn="primary"],
+html[data-custom-buttons-active="true"] [data-testid="calendar-add-new-task-btn"],
+html[data-custom-buttons-active="true"] [data-testid="calendar-add-new-task-btn-mobile"],
+html[data-custom-buttons-active="true"] [data-testid="selected-date-add-task-btn"],
+html[data-custom-buttons-active="true"] [data-testid="calendar-form-submit-btn"],
+html[data-custom-buttons-active="true"] [data-testid="open-theme-customizer-btn"] {
+  background-color: var(--custom-btn-primary-bg) !important;
+  color: var(--custom-btn-text) !important;
+  border-color: transparent !important;
+}
+
+html[data-custom-buttons-active="true"] [data-custom-btn="primary"]:hover,
+html[data-custom-buttons-active="true"] [data-testid="calendar-add-new-task-btn"]:hover,
+html[data-custom-buttons-active="true"] [data-testid="calendar-add-new-task-btn-mobile"]:hover,
+html[data-custom-buttons-active="true"] [data-testid="selected-date-add-task-btn"]:hover,
+html[data-custom-buttons-active="true"] [data-testid="calendar-form-submit-btn"]:hover,
+html[data-custom-buttons-active="true"] [data-testid="open-theme-customizer-btn"]:hover {
+  background-color: var(--custom-btn-hover-bg) !important;
+  color: var(--custom-btn-text) !important;
+}
+
+html[data-custom-buttons-active="true"] [data-custom-btn="secondary"] {
+  background-color: var(--custom-btn-secondary-bg) !important;
+  color: var(--custom-btn-secondary-text) !important;
+}
+

@@ -7,15 +7,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import confetti from 'canvas-confetti';
 import {
   CheckCircle2,
-  Maximize2,
   Minimize2,
-  Moon,
-  Search,
-  SlidersHorizontal,
-  Sun,
-  Volume2,
-  VolumeX,
-  X,
 } from 'lucide-react';
 import {
   DayColumn,
@@ -81,6 +73,11 @@ import {
   removeCustomCategory,
   setRuntimeCustomCategories,
   getRuntimeCustomCategories,
+  CalendarTaskFormInput,
+  addPersonalCalendarTask,
+  updatePersonalCalendarTask,
+  deletePersonalCalendarTask,
+  updateDailyTaskTimeBlock,
 } from './utils/todoLogic';
 import {
   getSoundPreference,
@@ -89,11 +86,18 @@ import {
 } from './utils/audioFeedback';
 import {
   ColorScheme,
+  ColorSchemePreference,
+  PersonalThemeCustomization,
+  cycleColorSchemePreference,
   getInitialColorScheme,
   getStoredColorScheme,
+  resolveColorScheme,
   setStoredColorScheme,
-  toggleColorScheme,
-  applyColorSchemeToDocument,
+  loadPersonalCustomization,
+  savePersonalCustomization,
+  resetPersonalCustomizationToDefault,
+  applyPersonalCustomizationToDocument,
+  resolveEffectiveColorSchemeFromCustomization,
 } from './utils/colorScheme';
 import {
   FULLSCREEN_CHANGE_EVENTS,
@@ -108,12 +112,12 @@ import {
   unlockPresentationScroll,
 } from './utils/fullscreenMode';
 import { useUndoRedo } from './hooks/useUndoRedo';
-import { RouterLink } from './components/RouterLink';
 import { DownloadModal } from './components/DownloadModal';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import { ArchiveModal } from './components/ArchiveModal';
 import { BulkImportModal } from './components/BulkImportModal';
 import { TaskSearchOverlay } from './components/TaskSearchOverlay';
+import { ThemeCustomizationStudio } from './components/ThemeCustomizationStudio';
 import { DashboardPage } from './pages/DashboardPage';
 import { HowItWorksPage } from './pages/HowItWorksPage';
 import { DailyColumnsPage } from './pages/DailyColumnsPage';
@@ -127,8 +131,8 @@ import { EverythingYouGetPage } from './pages/EverythingYouGetPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { SharedDashboardPageProps } from './pages/types';
 import { PomodoroProvider } from './components/PomodoroTimer';
+import { ResponsiveNavigation } from './components/ResponsiveNavigation';
 import {
-  PWAHeaderControls,
   PWAOfflineAndSyncBanner,
   SyncNotificationState,
 } from './components/PWAStatusAndInstallBar';
@@ -270,6 +274,8 @@ export default function App() {
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState<boolean>(false);
   const [archiveModalOpen, setArchiveModalOpen] = useState<boolean>(false);
   const [searchOverlayOpen, setSearchOverlayOpen] = useState<boolean>(false);
+  const [themeCustomizerModalOpen, setThemeCustomizerModalOpen] =
+    useState<boolean>(false);
   const [bulkImportModalState, setBulkImportModalState] = useState<{
     open: boolean;
     dayId: string;
@@ -277,8 +283,24 @@ export default function App() {
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() =>
     getSoundPreference()
   );
+  const [personalCustomization, setPersonalCustomization] =
+    useState<PersonalThemeCustomization>(() => loadPersonalCustomization());
+  const [colorSchemePreference, setColorSchemePreference] =
+    useState<ColorSchemePreference>(() => {
+      const stored = getStoredColorScheme();
+      if (stored) return stored;
+      const custom = loadPersonalCustomization();
+      if (
+        custom.appearanceMode === 'light' ||
+        custom.appearanceMode === 'dark' ||
+        custom.appearanceMode === 'system'
+      ) {
+        return custom.appearanceMode;
+      }
+      return custom.baseSchemeForCustom;
+    });
   const [colorScheme, setColorScheme] = useState<ColorScheme>(() =>
-    getInitialColorScheme()
+    resolveEffectiveColorSchemeFromCustomization(loadPersonalCustomization())
   );
   const [isPresentationMode, setIsPresentationMode] = useState<boolean>(false);
   const scrollLockSnapshotRef = useRef<ScrollLockSnapshot | null>(null);
@@ -317,10 +339,10 @@ export default function App() {
     []
   );
 
-  // Sync colorScheme with DOM and listen for system preference changes if no explicit user preference is stored
+  // Sync personal customization and colorScheme with DOM
   useEffect(() => {
-    applyColorSchemeToDocument(colorScheme);
-  }, [colorScheme]);
+    applyPersonalCustomizationToDocument(personalCustomization);
+  }, [personalCustomization]);
 
   useEffect(() => {
     if (
@@ -331,14 +353,17 @@ export default function App() {
     }
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleSystemThemeChange = (e: MediaQueryListEvent) => {
-      if (!getStoredColorScheme()) {
+      if (
+        getStoredColorScheme() === 'system' ||
+        personalCustomization.appearanceMode === 'system'
+      ) {
         setColorScheme(e.matches ? 'dark' : 'light');
       }
     };
     mediaQuery.addEventListener('change', handleSystemThemeChange);
     return () =>
       mediaQuery.removeEventListener('change', handleSystemThemeChange);
-  }, []);
+  }, [personalCustomization.appearanceMode]);
 
   // Sync browser history popstate (Back / Forward navigation)
   useEffect(() => {
@@ -715,17 +740,66 @@ export default function App() {
   }, [handleExplicitSave]);
 
   const handleToggleColorScheme = useCallback(() => {
-    setColorScheme((prev) => {
-      const next = toggleColorScheme(prev);
-      setStoredColorScheme(next);
-      applyColorSchemeToDocument(next);
+    setColorSchemePreference((prevPref) => {
+      const nextPref = cycleColorSchemePreference(prevPref);
+      const resolved = resolveColorScheme(nextPref);
+      setStoredColorScheme(nextPref);
+      setColorScheme(resolved);
+      setPersonalCustomization((prevCustom) => {
+        const nextCustom = savePersonalCustomization({
+          ...prevCustom,
+          appearanceMode: nextPref,
+          baseSchemeForCustom: resolved,
+        });
+        applyPersonalCustomizationToDocument(nextCustom);
+        return nextCustom;
+      });
       handleExplicitSave(
-        next === 'dark'
-          ? 'Switched to Dark Mode (Press D for Light Mode)'
-          : 'Switched to Light Mode (Press D for Dark Mode)'
+        nextPref === 'dark'
+          ? 'Switched to Dark Mode (Press D for System Mode)'
+          : nextPref === 'system'
+          ? `Following System Mode (${resolved === 'dark' ? 'Dark' : 'Light'}) — Press D for Light Mode`
+          : 'Switched to Light Mode (Default)'
       );
-      return next;
+      return nextPref;
     });
+  }, [handleExplicitSave]);
+
+  const handleApplyPersonalCustomization = useCallback(
+    (next: PersonalThemeCustomization) => {
+      const saved = savePersonalCustomization(next);
+      setPersonalCustomization(saved);
+      const effectiveScheme = resolveEffectiveColorSchemeFromCustomization(saved);
+      setColorScheme(effectiveScheme);
+      const prefToStore: ColorSchemePreference =
+        saved.appearanceMode === 'custom'
+          ? saved.baseSchemeForCustom
+          : saved.appearanceMode;
+      setColorSchemePreference(prefToStore);
+      setStoredColorScheme(prefToStore);
+      applyPersonalCustomizationToDocument(saved);
+      handleExplicitSave(
+        saved.appearanceMode === 'custom'
+          ? 'Applied Custom Personal Theme (Background & Button Colors saved)'
+          : `Saved ${
+              saved.appearanceMode === 'light'
+                ? 'Light Mode'
+                : saved.appearanceMode === 'dark'
+                ? 'Dark Mode'
+                : 'System Default'
+            } appearance settings`
+      );
+    },
+    [handleExplicitSave]
+  );
+
+  const handleResetPersonalCustomization = useCallback(() => {
+    const resetState = resetPersonalCustomizationToDefault();
+    setPersonalCustomization(resetState);
+    setColorScheme('light');
+    setColorSchemePreference('light');
+    applyPersonalCustomizationToDocument(resetState);
+    handleExplicitSave('Reset theme & background customization to default');
   }, [handleExplicitSave]);
 
   const handleEnterPresentationMode = useCallback(async () => {
@@ -1142,6 +1216,60 @@ export default function App() {
     );
   };
 
+  const handleAddCalendarTask = useCallback(
+    (input: CalendarTaskFormInput) => {
+      const res = addPersonalCalendarTask(columns, input);
+      if (!res.validation.valid || !res.createdTask) {
+        const firstError =
+          res.validation.errors.title ||
+          res.validation.errors.date ||
+          res.validation.errors.timeRange ||
+          res.validation.errors.duplicate ||
+          'Please check the task details.';
+        return { success: false, error: firstError };
+      }
+      setColumns(res.nextColumns);
+      if (soundEnabled) {
+        playTaskCompletionDing();
+      }
+      handleExplicitSave(
+        `Scheduled "${res.createdTask.text}" for ${input.date}`
+      );
+      return { success: true };
+    },
+    [columns, setColumns, soundEnabled, handleExplicitSave]
+  );
+
+  const handleUpdateCalendarTask = useCallback(
+    (taskId: string, input: CalendarTaskFormInput) => {
+      const res = updatePersonalCalendarTask(columns, taskId, input);
+      if (!res.validation.valid || !res.updatedTask) {
+        const firstError =
+          res.validation.errors.title ||
+          res.validation.errors.date ||
+          res.validation.errors.timeRange ||
+          res.validation.errors.duplicate ||
+          'Could not update task.';
+        return { success: false, error: firstError };
+      }
+      setColumns(res.nextColumns);
+      handleExplicitSave(`Updated task "${res.updatedTask.text}"`);
+      return { success: true };
+    },
+    [columns, setColumns, handleExplicitSave]
+  );
+
+  const handleDeleteCalendarTask = useCallback(
+    (taskId: string) => {
+      const res = deletePersonalCalendarTask(columns, taskId);
+      setColumns(res.nextColumns);
+      if (res.deletedTask) {
+        handleExplicitSave(`Deleted task "${res.deletedTask.text}"`);
+      }
+    },
+    [columns, setColumns, handleExplicitSave]
+  );
+
   const triggerSubtleDayConfetti = (origin?: { x: number; y: number }) => {
     try {
       const palette = THEMES[activeTheme];
@@ -1370,6 +1498,39 @@ export default function App() {
     const cleanNotes = sanitizeTaskNotes(notes);
     setColumns((prev) => updateDailyTaskNotes(prev, dayId, taskId, cleanNotes));
   };
+
+  const handleUpdateDailyTaskTimeBlock = useCallback(
+    (
+      dayId: string,
+      taskId: string,
+      startTime: string,
+      endTime: string
+    ): { success: boolean; error?: string } => {
+      const res = updateDailyTaskTimeBlock(
+        columns,
+        dayId,
+        taskId,
+        startTime,
+        endTime
+      );
+      if (!res.validation.valid) {
+        return {
+          success: false,
+          error: res.validation.error || 'Invalid time block range.',
+        };
+      }
+      setColumns(res.nextColumns);
+      if (res.updatedTask) {
+        const msg =
+          res.validation.durationMinutes > 0
+            ? `Time-blocked "${res.updatedTask.text}" (${res.validation.formattedRange} · ${res.validation.formattedDuration})`
+            : `Cleared time block for "${res.updatedTask.text}"`;
+        handleExplicitSave(msg);
+      }
+      return { success: true };
+    },
+    [columns, setColumns, handleExplicitSave]
+  );
 
   const handleReorderOrMoveDailyTask = (
     activeTaskId: string,
@@ -1789,6 +1950,7 @@ export default function App() {
     onBulkImportTasks: handleBulkImportTasks,
     onOpenBulkImportModal: handleOpenBulkImportModal,
     onUpdateDailyTaskNotes: handleUpdateDailyTaskNotes,
+    onUpdateDailyTaskTimeBlock: handleUpdateDailyTaskTimeBlock,
     onReorderOrMoveDailyTask: handleReorderOrMoveDailyTask,
     onResetWeek: handleResetWeek,
     onClearCompletedTasks: handleClearCompletedTasks,
@@ -1803,6 +1965,13 @@ export default function App() {
     onCycleGoalStatus: handleCycleGoalStatus,
     onCycleGoalCategory: handleCycleGoalCategory,
     onUpdateGoalText: handleUpdateGoalText,
+    onAddCalendarTask: handleAddCalendarTask,
+    onUpdateCalendarTask: handleUpdateCalendarTask,
+    onDeleteCalendarTask: handleDeleteCalendarTask,
+    personalCustomization,
+    onApplyPersonalCustomization: handleApplyPersonalCustomization,
+    onResetPersonalCustomization: handleResetPersonalCustomization,
+    onOpenThemeCustomizerModal: () => setThemeCustomizerModalOpen(true),
     onExportCsv: handleExportCsv,
     onExportJsonBackup: handleExportJsonBackup,
     onImportJsonBackup: handleImportJsonBackup,
@@ -1858,259 +2027,155 @@ export default function App() {
       <div
         data-testid="app-root-container"
         data-presentation-active={isPresentationMode ? 'true' : 'false'}
-        className={`flex flex-col radial-stage-bg text-[#2F2B28] ${
+        className={`relative flex flex-col radial-stage-bg text-[#2F2B28] ${
           isPresentationMode
             ? 'fixed inset-0 w-screen h-dvh overflow-hidden z-40'
             : 'min-h-dvh'
         }`}
       >
-        {!isPresentationMode && (
-          <a href="#main-content" className="skip-to-content">
-            Skip to main content
-          </a>
-        )}
-
-        {!isPresentationMode && (
-          <header
-            aria-label="Top Navigation Bar"
-            className="w-full bg-[#FAF6F0] px-4 sm:px-6 lg:px-8 py-3"
-          >
-            <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 sm:gap-4">
-              <div className="flex items-baseline gap-2 sm:gap-2.5 min-w-0">
-                <RouterLink
-                  to="/"
-                  currentPath={currentPath}
-                  onNavigate={handleNavigate}
-                  className="font-serif-display text-base sm:text-lg font-bold tracking-tight text-[#2F2B28] hover:text-[#B05C37] whitespace-nowrap shrink-0"
-                >
-                  my-tasks.html
-                </RouterLink>
-                <span
-                  aria-hidden="true"
-                  className="text-xs sm:text-sm text-[#A59E95] select-none shrink-0"
-                >
-                  /
-                </span>
-                <span
-                  data-testid="top-nav-view-context"
-                  className="text-xs sm:text-sm font-medium text-[#6E665E] truncate"
-                >
-                  {currentViewContextLabel}
-                </span>
-              </div>
-
-              {/* Global Task Search Bar + Multi-Filter Task Search Overlay Trigger */}
-              <div
-                className="hidden md:flex items-center gap-1.5 flex-1 max-w-md mx-3"
-                role="search"
-              >
-                <div className="relative flex-1 flex items-center">
-                  <Search
-                    className="w-3.5 h-3.5 text-[#8A8279] absolute left-3 pointer-events-none"
-                    aria-hidden="true"
-                  />
-                  <input
-                    type="search"
-                    value={searchQuery}
-                    data-testid="global-header-search-input"
-                    onChange={(e) => setSearchQuery(sanitizeTaskText(e.target.value, 120))}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Escape') {
-                        e.preventDefault();
-                        if (searchQuery.trim().length > 0) {
-                          setSearchQuery('');
-                        } else {
-                          e.currentTarget.blur();
-                        }
-                      } else if (e.key === 'Enter' && e.currentTarget.value.trim().length > 0) {
-                        e.preventDefault();
-                        setSearchOverlayOpen(true);
-                      }
-                    }}
-                    placeholder="Search all tasks, categories, notes... (/)"
-                    aria-label="Global task search across all views"
-                    className="w-full bg-white border border-[#DDD5CB] focus:border-[#C87D55] focus:ring-2 focus:ring-[#C87D55]/20 rounded-full pl-8 pr-16 py-1 text-xs font-medium text-[#2F2B28] placeholder:text-[#9C948B] transition-all focus:outline-none shadow-2xs"
-                  />
-                  {searchQuery.trim().length > 0 ? (
-                    <div className="absolute right-2 flex items-center gap-1">
-                      <span
-                        data-testid="global-header-search-count"
-                        className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-[#FAF0E6] text-[#A85B33] tabular-nums"
-                      >
-                        {globalMatchStats.totalMatches}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setSearchQuery('')}
-                        aria-label="Clear global search"
-                        data-testid="global-header-search-clear"
-                        className="text-[#8A8279] hover:text-[#2F2B28] p-0.5 rounded-full cursor-pointer hover:bg-[#F3EFE9]"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ) : (
-                    <span className="absolute right-2.5 text-[9px] font-semibold text-[#A89F93] border border-[#E0D8CD] px-1 py-0.2 rounded bg-[#F8F5EE] select-none pointer-events-none">
-                      /
-                    </span>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setSearchOverlayOpen(true)}
-                  aria-label="Open task search and multi-filter overlay (Ctrl+K)"
-                  aria-expanded={searchOverlayOpen}
-                  title="Filter & find tasks across all days and custom categories (Ctrl+K)"
-                  data-testid="open-task-search-overlay-btn"
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold text-[#4A433C] hover:text-[#2F2B28] bg-white hover:bg-[#F4EFE6] border border-[#DDD5CB] shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
-                >
-                  <SlidersHorizontal className="w-3 h-3 text-[#B05C37] shrink-0" />
-                  <span>Filters</span>
-                </button>
-              </div>
-
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setSearchOverlayOpen(true)}
-                  aria-label="Open task search overlay"
-                  data-testid="mobile-open-task-search-overlay-btn"
-                  className="md:hidden inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold text-[#5A534C] hover:text-[#2F2B28] bg-[#F2EFE9] border border-[#E2D9CC] cursor-pointer"
-                >
-                  <Search className="w-3.5 h-3.5" />
-                </button>
-                <PWAHeaderControls
-                  isOnline={isOnline}
-                  isSyncing={isSyncing}
-                  pendingSyncCount={pendingSyncCount}
-                  swOfflineReady={swOfflineReady}
-                  lastSyncedAt={lastSyncedAt}
-                  idbRevision={idbRevision}
-                  onRetryConnectionAndSync={handleRetryConnectionAndSync}
-                />
-
-                <button
-                  type="button"
-                  onClick={() => void handleEnterPresentationMode()}
-                  aria-label="Enter Fullscreen Presentation Mode (Press F)"
-                  aria-pressed={isPresentationMode}
-                  title="Enter Fullscreen Presentation Mode (F)"
-                  data-testid="enter-presentation-mode-btn"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold text-[#5A534C] hover:text-[#2F2B28] bg-[#F2EFE9] hover:bg-[#E4DDD3] border border-[#E2D9CC] cursor-pointer whitespace-nowrap"
-                >
-                  <Maximize2 className="w-3.5 h-3.5 shrink-0" />
-                  <span>Fullscreen</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleToggleSound}
-                  aria-label={
-                    soundEnabled
-                      ? 'Mute task completion sound (Press M)'
-                      : 'Unmute task completion sound (Press M)'
-                  }
-                  aria-pressed={soundEnabled}
-                  title={
-                    soundEnabled
-                      ? 'Mute completion sound (M)'
-                      : 'Unmute completion sound (M)'
-                  }
-                  data-testid="top-nav-sound-toggle"
-                  className="p-1.5 rounded-md text-[#6E665E] hover:text-[#2F2B28] hover:bg-[#EFECE6] cursor-pointer"
-                >
-                  {soundEnabled ? (
-                    <Volume2 className="w-4 h-4" />
-                  ) : (
-                    <VolumeX className="w-4 h-4" />
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleToggleColorScheme}
-                  aria-label={
-                    colorScheme === 'dark'
-                      ? 'Switch to Light Mode (Press D)'
-                      : 'Switch to Dark Mode (Press D)'
-                  }
-                  aria-pressed={colorScheme === 'dark'}
-                  title={
-                    colorScheme === 'dark'
-                      ? 'Switch to Light Mode (D)'
-                      : 'Switch to Dark Mode (D)'
-                  }
-                  data-testid="top-nav-theme-toggle"
-                  className="p-1.5 rounded-md text-[#6E665E] hover:text-[#2F2B28] hover:bg-[#EFECE6] cursor-pointer"
-                >
-                  {colorScheme === 'dark' ? (
-                    <Sun className="w-4 h-4" />
-                  ) : (
-                    <Moon className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-            </div>
-          </header>
-        )}
-
-        {!isPresentationMode && (
-          <PWAOfflineAndSyncBanner
-            isOnline={isOnline}
-            isSyncing={isSyncing}
-            pendingSyncCount={pendingSyncCount}
-            syncNotification={syncNotification}
-            onRetryConnectionAndSync={handleRetryConnectionAndSync}
-            onDismissNotification={() => setSyncNotification(null)}
-          />
-        )}
-
-        {isPresentationMode && (
+        {/* Persistent Custom Background Image Layer + Readability Scrim */}
+        {personalCustomization.background.imageDataUrl && (
           <div
-            data-testid="presentation-mode-controls"
-            className="fixed top-3.5 right-3.5 sm:top-4 sm:right-5 z-50 flex items-center gap-2"
+            data-testid="app-custom-background-layer"
+            aria-hidden="true"
+            className="fixed inset-0 pointer-events-none z-0 overflow-hidden"
           >
-            <button
-              type="button"
-              onClick={() => void handleExitPresentationMode()}
-              aria-label="Exit Fullscreen Presentation Mode (Press Esc)"
-              title="Exit Fullscreen Presentation Mode (Esc)"
-              data-testid="exit-presentation-mode-btn"
-              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold bg-[#2F2B28] hover:bg-[#3B3632] text-[#FAF7F2] border border-[#4A433C] shadow-md cursor-pointer whitespace-nowrap"
-            >
-              <Minimize2 className="w-3.5 h-3.5 shrink-0" />
-              <span>Exit Fullscreen</span>
-              <kbd className="hidden sm:inline-block ml-0.5 px-1.5 py-0.5 text-[10px] font-bold bg-[#433E3A] border border-[#5A534C] rounded text-[#E5DEC9]">
-                Esc
-              </kbd>
-            </button>
+            <img
+              src={personalCustomization.background.imageDataUrl}
+              alt=""
+              data-testid="app-custom-background-image"
+              className="w-full h-full object-cover transition-all duration-300"
+              style={{
+                objectPosition:
+                  personalCustomization.background.position === 'top'
+                    ? 'center top'
+                    : personalCustomization.background.position === 'bottom'
+                    ? 'center bottom'
+                    : 'center center',
+                filter: `brightness(${personalCustomization.background.brightness}%) blur(${personalCustomization.background.blurPx}px)`,
+                transform:
+                  personalCustomization.background.blurPx > 0
+                    ? 'scale(1.06)'
+                    : 'scale(1)',
+              }}
+            />
+            <div
+              data-testid="app-custom-background-scrim"
+              className="absolute inset-0 transition-opacity duration-300"
+              style={{
+                backgroundColor:
+                  colorScheme === 'dark' ? '#131110' : '#FAF6F0',
+                opacity: personalCustomization.background.overlayOpacity / 100,
+              }}
+            />
           </div>
         )}
 
-        <main
-          id="main-content"
-          tabIndex={-1}
-          className={`flex-1 flex flex-col focus:outline-none ${
-            isPresentationMode
-              ? 'h-dvh max-h-dvh overflow-hidden'
-              : 'min-h-[calc(100dvh-var(--navbar-height,57px))]'
-          }`}
-        >
-          {renderActivePage()}
-        </main>
+        <div className="relative z-10 flex flex-col flex-1 min-h-dvh">
+          {!isPresentationMode && (
+            <a href="#main-content" className="skip-to-content">
+              Skip to main content
+            </a>
+          )}
+
+          {!isPresentationMode && (
+            <ResponsiveNavigation
+              currentPath={currentPath}
+              currentViewContextLabel={currentViewContextLabel}
+              activeView={activeView}
+              activeTheme={activeTheme}
+              colorScheme={colorScheme}
+              colorSchemePreference={colorSchemePreference}
+              soundEnabled={soundEnabled}
+              isPresentationMode={isPresentationMode}
+              searchQuery={searchQuery}
+              searchMatchCount={globalMatchStats.totalMatches}
+              searchOverlayOpen={searchOverlayOpen}
+              archivedCount={archivedTasks.length}
+              isOnline={isOnline}
+              isSyncing={isSyncing}
+              pendingSyncCount={pendingSyncCount}
+              swOfflineReady={swOfflineReady}
+              lastSyncedAt={lastSyncedAt}
+              idbRevision={idbRevision}
+              onNavigate={handleNavigate}
+              onSelectView={setActiveView}
+              onSelectTheme={setActiveTheme}
+              onToggleColorScheme={handleToggleColorScheme}
+              onToggleSound={handleToggleSound}
+              onEnterPresentationMode={() => void handleEnterPresentationMode()}
+              onSearchQueryChange={(q) => setSearchQuery(sanitizeTaskText(q, 120))}
+              onOpenSearchOverlay={() => setSearchOverlayOpen(true)}
+              onOpenArchiveModal={() => setArchiveModalOpen(true)}
+              onOpenBulkImportModal={handleOpenBulkImportModal}
+              onOpenShortcutsModal={() => setShortcutsModalOpen(true)}
+              onOpenDownloadModal={() =>
+                setModalState({ open: true, tab: 'download' })
+              }
+              onOpenThemeCustomizerModal={() => setThemeCustomizerModalOpen(true)}
+              onExportCsv={handleExportCsv}
+              onExportJsonBackup={handleExportJsonBackup}
+              onRetryConnectionAndSync={handleRetryConnectionAndSync}
+            />
+          )}
+
+          {!isPresentationMode && (
+            <PWAOfflineAndSyncBanner
+              isOnline={isOnline}
+              isSyncing={isSyncing}
+              pendingSyncCount={pendingSyncCount}
+              syncNotification={syncNotification}
+              onRetryConnectionAndSync={handleRetryConnectionAndSync}
+              onDismissNotification={() => setSyncNotification(null)}
+            />
+          )}
+
+          {isPresentationMode && (
+            <div
+              data-testid="presentation-mode-controls"
+              className="fixed top-3.5 right-3.5 sm:top-4 sm:right-5 z-50 flex items-center gap-2"
+            >
+              <button
+                type="button"
+                onClick={() => void handleExitPresentationMode()}
+                aria-label="Exit Fullscreen Presentation Mode (Press Esc)"
+                title="Exit Fullscreen Presentation Mode (Esc)"
+                data-testid="exit-presentation-mode-btn"
+                className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold bg-[#2F2B28] hover:bg-[#3B3632] text-[#FAF7F2] border border-[#4A433C] shadow-md cursor-pointer whitespace-nowrap"
+              >
+                <Minimize2 className="w-3.5 h-3.5 shrink-0" />
+                <span>Exit Fullscreen</span>
+                <kbd className="hidden sm:inline-block ml-0.5 px-1.5 py-0.5 text-[10px] font-bold bg-[#433E3A] border border-[#5A534C] rounded text-[#E5DEC9]">
+                  Esc
+                </kbd>
+              </button>
+            </div>
+          )}
+
+          <main
+            id="main-content"
+            tabIndex={-1}
+            className={`flex-1 flex flex-col focus:outline-none ${
+              isPresentationMode
+                ? 'h-dvh max-h-dvh overflow-hidden'
+                : 'min-h-[calc(100dvh-var(--navbar-height,57px))] pb-16 md:pb-0'
+            }`}
+          >
+            {renderActivePage()}
+          </main>
+        </div>
 
         {saveToast && (
           <div
             role="status"
             aria-live="polite"
             data-testid="shortcut-save-toast"
-            className="fixed bottom-4 right-4 z-50 flex items-center gap-2 bg-[#2F2B28] text-[#FAF7F2] border border-[#4A433C] px-3.5 py-2 rounded-full shadow-lg text-xs font-bold pointer-events-none"
+            className="fixed bottom-18 md:bottom-4 right-4 z-50 flex items-center gap-2 bg-[#2F2B28] text-[#FAF7F2] border border-[#4A433C] px-3.5 py-2 rounded-full shadow-lg text-xs font-bold pointer-events-none max-w-[calc(100vw-2rem)]"
           >
             <CheckCircle2 className="w-4 h-4 text-[#84CA9E] shrink-0" />
-            <span>{saveToast.message}</span>
+            <span className="truncate">{saveToast.message}</span>
             {saveToast.shortcut && (
-              <kbd className="ml-1 px-1.5 py-0.5 text-[10px] font-bold bg-[#433E3A] border border-[#5A534C] rounded text-[#E5DEC9]">
+              <kbd className="hidden sm:inline-block ml-1 px-1.5 py-0.5 text-[10px] font-bold bg-[#433E3A] border border-[#5A534C] rounded text-[#E5DEC9]">
                 {saveToast.shortcut}
               </kbd>
             )}
@@ -2179,6 +2244,18 @@ export default function App() {
           onNavigate={handleNavigate}
           onSelectView={setActiveView}
         />
+
+        {themeCustomizerModalOpen && (
+          <ThemeCustomizationStudio
+            customization={personalCustomization}
+            activeTheme={activeTheme}
+            onApplyCustomization={handleApplyPersonalCustomization}
+            onResetCustomization={handleResetPersonalCustomization}
+            onSelectTheme={setActiveTheme}
+            isModal
+            onCloseModal={() => setThemeCustomizerModalOpen(false)}
+          />
+        )}
       </div>
     </PomodoroProvider>
   );

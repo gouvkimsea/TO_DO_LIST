@@ -5,10 +5,12 @@
 
 export const DEFAULT_POMODORO_SECONDS = 25 * 60; // 25 minutes (1500s)
 export const SHORT_BREAK_SECONDS = 5 * 60; // 5 minutes (300s)
+export const LONG_BREAK_SECONDS = 15 * 60; // 15 minutes (900s)
+export const POMODORO_CYCLE_LENGTH = 4; // 4 focus blocks before a long break
 export const POMODORO_STORAGE_KEY = 'interactive_todo_pomodoro_v1';
 
 export type PomodoroStatus = 'idle' | 'running' | 'paused' | 'completed';
-export type PomodoroMode = 'focus' | 'break';
+export type PomodoroMode = 'focus' | 'break' | 'longBreak';
 
 export interface PomodoroState {
   status: PomodoroStatus;
@@ -16,6 +18,60 @@ export interface PomodoroState {
   secondsLeft: number;
   totalSeconds: number;
   completedSessions: number;
+}
+
+export function getModeDurationSeconds(mode: PomodoroMode): number {
+  if (mode === 'break') return SHORT_BREAK_SECONDS;
+  if (mode === 'longBreak') return LONG_BREAK_SECONDS;
+  return DEFAULT_POMODORO_SECONDS;
+}
+
+export function getModeLabel(mode: PomodoroMode): string {
+  if (mode === 'break') return 'Short Break';
+  if (mode === 'longBreak') return 'Long Break';
+  return 'Focus Session';
+}
+
+export function getPomodoroCycleProgress(completedSessions: number): {
+  currentStepInCycle: number;
+  completedFullCycles: number;
+  cycleSteps: Array<{ stepNumber: number; completed: boolean; isCurrent: boolean }>;
+} {
+  const safeCompleted =
+    Number.isFinite(completedSessions) && completedSessions > 0
+      ? Math.floor(completedSessions)
+      : 0;
+  const completedFullCycles = Math.floor(safeCompleted / POMODORO_CYCLE_LENGTH);
+  const completedInCurrent = safeCompleted % POMODORO_CYCLE_LENGTH;
+  const currentStepInCycle = completedInCurrent + 1;
+
+  const cycleSteps = Array.from({ length: POMODORO_CYCLE_LENGTH }, (_, idx) => ({
+    stepNumber: idx + 1,
+    completed: idx < completedInCurrent,
+    isCurrent: idx === completedInCurrent,
+  }));
+
+  return {
+    currentStepInCycle,
+    completedFullCycles,
+    cycleSteps,
+  };
+}
+
+export function getNextRecommendedPomodoroMode(
+  state: PomodoroState
+): PomodoroMode {
+  if (state.mode === 'focus') {
+    const nextCompletedCount =
+      state.status === 'completed'
+        ? state.completedSessions
+        : state.completedSessions + 1;
+    return nextCompletedCount > 0 &&
+      nextCompletedCount % POMODORO_CYCLE_LENGTH === 0
+      ? 'longBreak'
+      : 'break';
+  }
+  return 'focus';
 }
 
 export function createInitialPomodoroState(
@@ -72,9 +128,7 @@ export function startPomodoro(state: PomodoroState): PomodoroState {
   const targetTotal =
     state.totalSeconds > 0
       ? state.totalSeconds
-      : state.mode === 'break'
-      ? SHORT_BREAK_SECONDS
-      : DEFAULT_POMODORO_SECONDS;
+      : getModeDurationSeconds(state.mode);
 
   const nextSeconds =
     state.status === 'completed' || state.secondsLeft <= 0
@@ -100,8 +154,7 @@ export function pausePomodoro(state: PomodoroState): PomodoroState {
 }
 
 export function stopAndResetPomodoro(state: PomodoroState): PomodoroState {
-  const targetTotal =
-    state.mode === 'break' ? SHORT_BREAK_SECONDS : DEFAULT_POMODORO_SECONDS;
+  const targetTotal = getModeDurationSeconds(state.mode);
   return {
     ...state,
     status: 'idle',
@@ -121,8 +174,7 @@ export function switchPomodoroMode(
   state: PomodoroState,
   mode: PomodoroMode
 ): PomodoroState {
-  const targetTotal =
-    mode === 'break' ? SHORT_BREAK_SECONDS : DEFAULT_POMODORO_SECONDS;
+  const targetTotal = getModeDurationSeconds(mode);
   return {
     ...state,
     mode,
@@ -172,3 +224,4 @@ export function tickPomodoro(
     didComplete: false,
   };
 }
+

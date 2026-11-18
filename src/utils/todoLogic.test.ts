@@ -79,6 +79,7 @@ import {
   consumeDashboardInitialLoadEntrance,
   resetDashboardInitialLoadEntranceForTest,
   resolveDashboardEntranceInitialProp,
+  calculateTaskCompletionVelocity,
 } from './todoLogic';
 
 test('cyclePriority cycles High -> Med -> Low -> High', () => {
@@ -2372,5 +2373,651 @@ test('task search overlay: searchTasksAcrossAllDaysAndCategories filters across 
 
   resetRuntimeCustomCategoriesForTest();
 });
+
+test('daily task progress line chart: buildDailyTaskProgressLineData logs daily completed tasks, cumulative progress, and updates live when tasks are toggled', async () => {
+  const { buildDailyTaskProgressLineData } = await import('./todoLogic');
+
+  const cols = createInitialWeekColumns();
+  const detailed = createInitialDetailedTasks();
+
+  // 1. Initial week state: 10 completed of 22 scheduled across 7 days (Mon..Sun)
+  const initialSummary = buildDailyTaskProgressLineData(cols);
+  assert.equal(initialSummary.points.length, 7);
+  assert.equal(initialSummary.totalCompleted, 10);
+  assert.equal(initialSummary.totalScheduled, 22);
+  assert.equal(initialSummary.totalPending, 12);
+  assert.equal(initialSummary.weeklyCompletionRate, 45);
+  assert.equal(initialSummary.averageDailyCompleted, 1.4);
+  assert.equal(initialSummary.maxDailyCompleted, 4);
+  assert.equal(initialSummary.peakDay?.dayId, 'mon');
+  assert.equal(initialSummary.peakDay?.completed, 4);
+
+  // Verify day-by-day completed counts and cumulative progression across Mon..Sun
+  // Mon: 4, Tue: 1, Wed: 1, Thu: 1, Fri: 1, Sat: 1, Sun: 1
+  assert.deepEqual(
+    initialSummary.points.map((p) => p.completed),
+    [4, 1, 1, 1, 1, 1, 1]
+  );
+  assert.deepEqual(
+    initialSummary.points.map((p) => p.cumulativeCompleted),
+    [4, 5, 6, 7, 8, 9, 10]
+  );
+  assert.equal(initialSummary.points[0]?.completedTaskTitles.length, 4);
+
+  // 2. Toggle dt-5 (linked to Friday 'fri-3' "Q3 planning session") -> Friday completed becomes 2, total becomes 11
+  const toggled = syncDetailedTaskToggle(detailed, cols, 'dt-5');
+  const updatedSummary = buildDailyTaskProgressLineData(toggled.nextColumns);
+  assert.equal(updatedSummary.totalCompleted, 11);
+  assert.equal(updatedSummary.weeklyCompletionRate, 50);
+  const friPoint = updatedSummary.points.find((p) => p.dayId === 'fri');
+  assert.equal(friPoint?.completed, 2);
+  assert.equal(friPoint?.total, 3);
+  assert.equal(friPoint?.completionRate, 67);
+  assert.ok(friPoint?.completedTaskTitles.includes('Q3 planning session'));
+  assert.deepEqual(
+    updatedSummary.points.map((p) => p.cumulativeCompleted),
+    [4, 5, 6, 7, 9, 10, 11]
+  );
+});
+
+test('daily tip card: resolveDailyTipRecommendation returns contextual tips based on task count and progress status', async () => {
+  const { resolveDailyTipRecommendation } = await import('./todoLogic');
+
+  // 1. Empty board (0 total tasks)
+  const emptyTip = resolveDailyTipRecommendation({
+    totalTasks: 0,
+    completedTasks: 0,
+  });
+  assert.equal(emptyTip.category, 'empty');
+  assert.equal(emptyTip.badgeLabel, 'Fresh Slate');
+
+  // 2. Kickoff state (0 completed, >0 total)
+  const kickoffTip = resolveDailyTipRecommendation({
+    totalTasks: 15,
+    completedTasks: 0,
+  });
+  assert.equal(kickoffTip.category, 'kickoff');
+  assert.equal(kickoffTip.badgeLabel, 'Quick Win');
+
+  // 3. High-priority pending overload (<50% completion and >=3 high priority pending)
+  const highPriorityTip = resolveDailyTipRecommendation({
+    totalTasks: 22,
+    completedTasks: 10,
+    completionPercentage: 45,
+    highPriorityPendingCount: 5,
+  });
+  assert.equal(highPriorityTip.category, 'high-priority');
+  assert.equal(highPriorityTip.badgeLabel, 'Priority Focus');
+  assert.ok(highPriorityTip.title.includes('5 high-priority tasks'));
+
+  // 4. Steady momentum (in-progress without high-priority overload or >=50% completion)
+  const momentumTip = resolveDailyTipRecommendation({
+    totalTasks: 22,
+    completedTasks: 11,
+    completionPercentage: 50,
+    highPriorityPendingCount: 4,
+  });
+  assert.equal(momentumTip.category, 'momentum');
+  assert.equal(momentumTip.badgeLabel, 'Steady Pace');
+  assert.ok(momentumTip.title.includes('50%'));
+
+  // 5. Final stretch (>=75% completion)
+  const finalStretchTip = resolveDailyTipRecommendation({
+    totalTasks: 20,
+    completedTasks: 16,
+    completionPercentage: 80,
+  });
+  assert.equal(finalStretchTip.category, 'final-stretch');
+  assert.equal(finalStretchTip.badgeLabel, 'Final Stretch');
+  assert.ok(finalStretchTip.title.includes('4 tasks left'));
+
+  // 6. All completed (100%)
+  const completedTip = resolveDailyTipRecommendation({
+    totalTasks: 22,
+    completedTasks: 22,
+    completionPercentage: 100,
+  });
+  assert.equal(completedTip.category, 'completed');
+  assert.equal(completedTip.badgeLabel, '100% Complete');
+  assert.equal(completedTip.completionPercentage, 100);
+});
+
+test('priority distribution donut chart: buildPriorityDistributionSummary computes High, Med, Low distribution across all, weekly, and focus scopes', async () => {
+  const { buildPriorityDistributionSummary } = await import('./todoLogic');
+
+  const cols = createInitialWeekColumns();
+  const detailed = createInitialDetailedTasks();
+  const metrics = calculateDashboardMetrics(cols, detailed);
+
+  // 1. Default 'all' scope matches DashboardMetrics.byPriority (High: 15, Med: 10, Low: 7, Total: 32)
+  const allDist = buildPriorityDistributionSummary({
+    columns: cols,
+    detailedTasks: detailed,
+    scope: 'all',
+  });
+  assert.equal(allDist.totalTasks, 32);
+  assert.equal(allDist.slices.length, 3);
+  assert.equal(allDist.slices[0]?.priority, 'High');
+  assert.equal(allDist.slices[0]?.totalCount, metrics.byPriority.High);
+  assert.equal(allDist.slices[1]?.priority, 'Med');
+  assert.equal(allDist.slices[1]?.totalCount, metrics.byPriority.Med);
+  assert.equal(allDist.slices[2]?.priority, 'Low');
+  assert.equal(allDist.slices[2]?.totalCount, metrics.byPriority.Low);
+  assert.equal(allDist.dominantPriority?.priority, 'Low');
+
+  // 2. 'weekly' scope counts only the 22 active daily column tasks
+  const weeklyDist = buildPriorityDistributionSummary({
+    columns: cols,
+    detailedTasks: detailed,
+    scope: 'weekly',
+  });
+  assert.equal(weeklyDist.totalTasks, 22);
+  assert.equal(weeklyDist.totalCompleted, 10);
+
+  // 3. 'focus' scope counts only the 10 active detailed focus tasks
+  const focusDist = buildPriorityDistributionSummary({
+    columns: cols,
+    detailedTasks: detailed,
+    scope: 'focus',
+  });
+  assert.equal(focusDist.totalTasks, 10);
+
+  // 4. Cycling a High-priority task ('dt-5', linked to 'fri-3') to Med updates High (-2) and Med (+2) in 'all' scope
+  const cycled = syncDetailedTaskPriority(detailed, cols, 'dt-5');
+  const updatedDist = buildPriorityDistributionSummary({
+    columns: cycled.nextColumns,
+    detailedTasks: cycled.nextDetailedTasks,
+    scope: 'all',
+  });
+  assert.equal(updatedDist.slices[0]?.totalCount, metrics.byPriority.High - 2);
+  assert.equal(updatedDist.slices[1]?.totalCount, metrics.byPriority.Med + 2);
+});
+
+test('dashboard day column notes: formatTaskNoteSummary and saveDailyTaskNote format previews and persist task-specific notes cleanly', async () => {
+  const { formatTaskNoteSummary, saveDailyTaskNote } = await import('./todoLogic');
+
+  // 1. Empty or whitespace-only notes
+  const emptySummary = formatTaskNoteSummary('   ');
+  assert.equal(emptySummary.hasNotes, false);
+  assert.equal(emptySummary.wordCount, 0);
+  assert.equal(emptySummary.previewText, '');
+
+  // 2. Non-empty note summary with truncation
+  const validSummary = formatTaskNoteSummary(
+    'Prepare executive summary slide deck with Q3 revenue projections and hiring plan',
+    32
+  );
+  assert.equal(validSummary.hasNotes, true);
+  assert.equal(validSummary.wordCount, 12);
+  assert.ok(validSummary.previewText.endsWith('…'));
+
+  // 3. saveDailyTaskNote updates the target task in DayColumn[]
+  const cols = createInitialWeekColumns();
+  const res = saveDailyTaskNote(
+    cols,
+    'mon',
+    'mon-1',
+    'Follow up with enterprise customer regarding contract renewal'
+  );
+  assert.ok(res.updatedTask);
+  assert.equal(
+    res.savedNotes,
+    'Follow up with enterprise customer regarding contract renewal'
+  );
+  const mon1 = res.nextColumns
+    .find((c) => c.id === 'mon')
+    ?.tasks.find((t) => t.id === 'mon-1');
+  assert.equal(
+    mon1?.notes,
+    'Follow up with enterprise customer regarding contract renewal'
+  );
+});
+
+test('time remaining before end-of-day: calculateEndOfDayTimeRemaining computes remaining hours/minutes before 5pm for non-completed tasks', async () => {
+  const {
+    DEFAULT_EOD_TARGET_HOUR,
+    calculateEndOfDayTimeRemaining,
+    formatHourLabel,
+  } = await import('./todoLogic');
+
+  assert.equal(DEFAULT_EOD_TARGET_HOUR, 17);
+  assert.deepEqual(formatHourLabel(17), {
+    fullLabel: '5:00 PM',
+    shortLabel: '5pm',
+  });
+
+  // 1. Morning (9:15 AM) before 5:00 PM EOD -> 7h 45m left (465 mins), plenty urgency
+  const morningNow = new Date(2026, 5, 11, 9, 15, 0, 0);
+  const morningRes = calculateEndOfDayTimeRemaining({
+    now: morningNow,
+    completed: false,
+  });
+  assert.equal(morningRes.completed, false);
+  assert.equal(morningRes.targetHour, 17);
+  assert.equal(morningRes.targetShortLabel, '5pm');
+  assert.equal(morningRes.remainingMinutes, 465);
+  assert.equal(morningRes.hoursLeft, 7);
+  assert.equal(morningRes.minutesLeft, 45);
+  assert.equal(morningRes.isPastEndOfDay, false);
+  assert.equal(morningRes.urgency, 'plenty');
+  assert.equal(morningRes.shortLabel, '7h 45m left');
+
+  // 2. Afternoon approaching (3:00 PM) before 5:00 PM EOD -> 2h left (120 mins), approaching urgency
+  const afternoonNow = new Date(2026, 5, 11, 15, 0, 0, 0);
+  const afternoonRes = calculateEndOfDayTimeRemaining({
+    now: afternoonNow,
+    completed: false,
+  });
+  assert.equal(afternoonRes.remainingMinutes, 120);
+  assert.equal(afternoonRes.hoursLeft, 2);
+  assert.equal(afternoonRes.minutesLeft, 0);
+  assert.equal(afternoonRes.urgency, 'approaching');
+  assert.equal(afternoonRes.shortLabel, '2h left');
+
+  // 3. Final hour urgent (4:20 PM) before 5:00 PM EOD -> 40m left (40 mins), urgent urgency
+  const urgentNow = new Date(2026, 5, 11, 16, 20, 0, 0);
+  const urgentRes = calculateEndOfDayTimeRemaining({
+    now: urgentNow,
+    completed: false,
+  });
+  assert.equal(urgentRes.remainingMinutes, 40);
+  assert.equal(urgentRes.hoursLeft, 0);
+  assert.equal(urgentRes.minutesLeft, 40);
+  assert.equal(urgentRes.urgency, 'urgent');
+  assert.equal(urgentRes.shortLabel, '40m left');
+
+  // 4. Past end-of-day (6:10 PM) after 5:00 PM EOD -> Past 5pm EOD, 0 mins
+  const eveningNow = new Date(2026, 5, 11, 18, 10, 0, 0);
+  const pastRes = calculateEndOfDayTimeRemaining({
+    now: eveningNow,
+    completed: false,
+  });
+  assert.equal(pastRes.remainingMinutes, 0);
+  assert.equal(pastRes.isPastEndOfDay, true);
+  assert.equal(pastRes.urgency, 'past-eod');
+  assert.equal(pastRes.shortLabel, 'Past 5pm EOD');
+
+  // 5. Custom EOD target (6:00 PM / 18:00) at 4:30 PM -> 1h 30m left
+  const customTargetRes = calculateEndOfDayTimeRemaining({
+    now: new Date(2026, 5, 11, 16, 30, 0, 0),
+    targetHour: 18,
+    completed: false,
+  });
+  assert.equal(customTargetRes.targetShortLabel, '6pm');
+  assert.equal(customTargetRes.remainingMinutes, 90);
+  assert.equal(customTargetRes.shortLabel, '1h 30m left');
+
+  // 6. Completed task returns urgency 'completed' and 0 remainingMinutes
+  const completedRes = calculateEndOfDayTimeRemaining({
+    now: morningNow,
+    completed: true,
+  });
+  assert.equal(completedRes.completed, true);
+  assert.equal(completedRes.urgency, 'completed');
+  assert.equal(completedRes.remainingMinutes, 0);
+});
+
+test('mobile-first responsive logic: resolveResponsiveViewportTier and filterColumnsForMobileDayScope cover all 8 required viewport widths', async () => {
+  const {
+    resolveResponsiveViewportTier,
+    filterColumnsForMobileDayScope,
+  } = await import('./todoLogic');
+
+  // Verify all 8 target QA viewports: 320, 375, 390, 430, 768, 1024, 1366, 1920
+  const v320 = resolveResponsiveViewportTier(320);
+  assert.equal(v320.tier, 'xs-phone');
+  assert.equal(v320.isMobile, true);
+  assert.equal(v320.isCompactPhone, true);
+  assert.equal(v320.showBottomNav, true);
+  assert.equal(v320.showHamburgerMenu, true);
+  assert.equal(v320.minTouchTargetPx, 44);
+  assert.equal(v320.recommendedDayColumnsPerRow, 1);
+
+  const v375 = resolveResponsiveViewportTier(375);
+  assert.equal(v375.tier, 'phone');
+  assert.equal(v375.isMobile, true);
+  assert.equal(v375.isCompactPhone, true);
+
+  const v390 = resolveResponsiveViewportTier(390);
+  assert.equal(v390.tier, 'phone');
+  assert.equal(v390.isMobile, true);
+  assert.equal(v390.isCompactPhone, false);
+
+  const v430 = resolveResponsiveViewportTier(430);
+  assert.equal(v430.tier, 'phone');
+  assert.equal(v430.isMobile, true);
+  assert.equal(v430.showBottomNav, true);
+
+  const v768 = resolveResponsiveViewportTier(768);
+  assert.equal(v768.tier, 'tablet');
+  assert.equal(v768.isTablet, true);
+  assert.equal(v768.showBottomNav, false);
+  assert.equal(v768.showHamburgerMenu, true);
+  assert.equal(v768.recommendedDayColumnsPerRow, 2);
+
+  const v1024 = resolveResponsiveViewportTier(1024);
+  assert.equal(v1024.tier, 'laptop');
+  assert.equal(v1024.isDesktop, true);
+  assert.equal(v1024.showHamburgerMenu, false);
+  assert.equal(v1024.recommendedDayColumnsPerRow, 4);
+
+  const v1366 = resolveResponsiveViewportTier(1366);
+  assert.equal(v1366.tier, 'desktop');
+  assert.equal(v1366.isDesktop, true);
+  assert.equal(v1366.recommendedDayColumnsPerRow, 7);
+
+  const v1920 = resolveResponsiveViewportTier(1920);
+  assert.equal(v1920.tier, 'wide-desktop');
+  assert.equal(v1920.isDesktop, true);
+  assert.equal(v1920.recommendedDayColumnsPerRow, 7);
+
+  // Mobile day column scope filtering
+  const columns = createInitialWeekColumns();
+  assert.equal(filterColumnsForMobileDayScope(columns, 'all').length, 7);
+  const onlyWed = filterColumnsForMobileDayScope(columns, 'wed');
+  assert.equal(onlyWed.length, 1);
+  assert.equal(onlyWed[0].id, 'wed');
+  // Unknown day id falls back safely to all columns
+  assert.equal(filterColumnsForMobileDayScope(columns, 'invalid-day').length, 7);
+});
+
+test('interactive calendar & personal task management: navigation, month/week/day views, validation, CRUD, and persistence roundtrip', async () => {
+  const {
+    isValidIsoDateString,
+    isValidTime24String,
+    formatCalendarTimeRange,
+    navigateCalendarDate,
+    buildCalendarMonthGrid,
+    buildCalendarWeekSchedule,
+    getTasksForCalendarDate,
+    validateCalendarTaskInput,
+    addPersonalCalendarTask,
+    updatePersonalCalendarTask,
+    deletePersonalCalendarTask,
+    parsePersistedDashboardState,
+  } = await import('./todoLogic');
+
+  // 1. Date and time validation + formatting
+  assert.equal(isValidIsoDateString('2026-06-11'), true);
+  assert.equal(isValidIsoDateString('2026-02-30'), false);
+  assert.equal(isValidIsoDateString('not-a-date'), false);
+  assert.equal(isValidTime24String('09:30'), true);
+  assert.equal(isValidTime24String('25:00'), false);
+  assert.equal(formatCalendarTimeRange('09:30', '11:00'), '9:30 AM – 11:00 AM');
+  assert.equal(formatCalendarTimeRange('14:15', '15:45'), '2:15 PM – 3:45 PM');
+  assert.equal(formatCalendarTimeRange('', ''), 'All day');
+
+  // 2. Navigation across month, week, and day views
+  assert.equal(navigateCalendarDate('2026-06-11', 'day', 'next'), '2026-06-12');
+  assert.equal(navigateCalendarDate('2026-06-11', 'day', 'prev'), '2026-06-10');
+  assert.equal(navigateCalendarDate('2026-06-11', 'week', 'next'), '2026-06-18');
+  assert.equal(navigateCalendarDate('2026-06-11', 'week', 'prev'), '2026-06-04');
+  assert.equal(navigateCalendarDate('2026-06-11', 'month', 'next'), '2026-07-11');
+  assert.equal(navigateCalendarDate('2026-06-11', 'month', 'prev'), '2026-05-11');
+  // Month-end clamping (Jan 31 -> Feb 28)
+  assert.equal(navigateCalendarDate('2026-01-31', 'month', 'next'), '2026-02-28');
+
+  // 3. Month grid (42 cells) and Week schedule (7 days)
+  const initialCols = createInitialWeekColumns();
+  const monthGrid = buildCalendarMonthGrid('2026-06-11', '2026-06-11', initialCols);
+  assert.equal(monthGrid.cells.length, 42);
+  assert.equal(monthGrid.monthLabel, 'June 2026');
+  assert.equal(monthGrid.totalMonthTasks, 22);
+  assert.equal(monthGrid.completedMonthTasks, 10);
+  const todayCell = monthGrid.cells.find((c) => c.dateStr === '2026-06-11');
+  assert.ok(todayCell);
+  assert.equal(todayCell.isToday, true);
+  assert.equal(todayCell.tasks.length, 3);
+
+  const weekDays = buildCalendarWeekSchedule('2026-06-11', '2026-06-11', initialCols);
+  assert.equal(weekDays.length, 7);
+  assert.equal(weekDays[0].dateStr, '2026-06-08');
+  assert.equal(weekDays[6].dateStr, '2026-06-14');
+
+  // 4. Form validation: required title, valid date, time range conflict, and duplicate detection
+  const emptyTitleCheck = validateCalendarTaskInput({
+    title: '   ',
+    date: '2026-06-11',
+    priority: 'High',
+    status: 'To Do',
+    category: 'Work',
+  });
+  assert.equal(emptyTitleCheck.valid, false);
+  assert.ok(emptyTitleCheck.errors.title);
+
+  const invertedTimeCheck = validateCalendarTaskInput({
+    title: 'Sprint retro',
+    date: '2026-06-11',
+    startTime: '15:00',
+    endTime: '14:00',
+    priority: 'Med',
+    status: 'To Do',
+    category: 'Work',
+  });
+  assert.equal(invertedTimeCheck.valid, false);
+  assert.ok(invertedTimeCheck.errors.timeRange);
+
+  // 5. Add new personal calendar task (including on a future date outside the initial week)
+  const addRes = addPersonalCalendarTask(initialCols, {
+    title: 'Quarterly dental checkup',
+    description: 'Bring insurance card',
+    date: '2026-06-25', // Thursday in a later week
+    startTime: '10:30',
+    endTime: '11:30',
+    priority: 'High',
+    status: 'To Do',
+    category: 'Health',
+  });
+  assert.equal(addRes.validation.valid, true);
+  assert.ok(addRes.createdTask);
+  const jun25Tasks = getTasksForCalendarDate('2026-06-25', addRes.nextColumns);
+  assert.equal(jun25Tasks.length, 1);
+  assert.equal(jun25Tasks[0].title, 'Quarterly dental checkup');
+  assert.equal(jun25Tasks[0].description, 'Bring insurance card');
+  assert.equal(jun25Tasks[0].startTime, '10:30');
+  assert.equal(jun25Tasks[0].endTime, '11:30');
+
+  // Duplicate check rejects adding the exact same task twice on the same date & startTime
+  const dupRes = addPersonalCalendarTask(addRes.nextColumns, {
+    title: 'Quarterly dental checkup',
+    date: '2026-06-25',
+    startTime: '10:30',
+    endTime: '11:30',
+    priority: 'High',
+    status: 'To Do',
+    category: 'Health',
+  });
+  assert.equal(dupRes.validation.valid, false);
+  assert.ok(dupRes.validation.errors.duplicate);
+
+  // 6. Update task (moving date from 2026-06-25 Thursday to 2026-06-26 Friday + updating status)
+  const createdId = addRes.createdTask!.id;
+  const updateRes = updatePersonalCalendarTask(addRes.nextColumns, createdId, {
+    title: 'Quarterly dental checkup (rescheduled)',
+    description: 'Moved to Friday afternoon',
+    date: '2026-06-26',
+    startTime: '14:00',
+    endTime: '15:00',
+    priority: 'Med',
+    status: 'In Progress',
+    category: 'Health',
+  });
+  assert.equal(updateRes.validation.valid, true);
+  assert.equal(getTasksForCalendarDate('2026-06-25', updateRes.nextColumns).length, 0);
+  const jun26Tasks = getTasksForCalendarDate('2026-06-26', updateRes.nextColumns);
+  assert.equal(jun26Tasks.length, 1);
+  assert.equal(jun26Tasks[0].title, 'Quarterly dental checkup (rescheduled)');
+  assert.equal(jun26Tasks[0].status, 'In Progress');
+
+  // 7. Persistence roundtrip preserves scheduledDate, startTime, and endTime
+  const persistedState = parsePersistedDashboardState(
+    JSON.stringify({
+      columns: updateRes.nextColumns,
+      activeTheme: 'terracotta',
+    })
+  );
+  const restoredJun26 = getTasksForCalendarDate('2026-06-26', persistedState.columns);
+  assert.equal(restoredJun26.length, 1);
+  assert.equal(restoredJun26[0].title, 'Quarterly dental checkup (rescheduled)');
+  assert.equal(restoredJun26[0].startTime, '14:00');
+  assert.equal(restoredJun26[0].endTime, '15:00');
+
+  // 8. Delete task removes it from the calendar while keeping column slots valid
+  const deleteRes = deletePersonalCalendarTask(persistedState.columns, createdId);
+  assert.ok(deleteRes.deletedTask);
+  assert.equal(getTasksForCalendarDate('2026-06-26', deleteRes.nextColumns).length, 0);
+});
+
+test('daily time-blocking & vertical timeline: validation, duration calculation, overlap detection, and persistence roundtrip', async () => {
+  const {
+    parseTime24ToMinutes,
+    formatMinutesToTime24,
+    addMinutesToTime24,
+    calculateTimeBlockDurationMinutes,
+    formatTimeBlockDuration,
+    validateTimeBlockRange,
+    resolveDailyTaskTimeBlock,
+    updateDailyTaskTimeBlock,
+    buildDayTimeBlockTimeline,
+    parsePersistedDashboardState,
+  } = await import('./todoLogic');
+
+  // 1. Time parsing and duration helpers
+  assert.equal(parseTime24ToMinutes('09:30'), 570);
+  assert.equal(parseTime24ToMinutes('invalid'), null);
+  assert.equal(formatMinutesToTime24(570), '09:30');
+  assert.equal(addMinutesToTime24('09:30', 90), '11:00');
+  assert.equal(calculateTimeBlockDurationMinutes('09:30', '11:00'), 90);
+  assert.equal(formatTimeBlockDuration(90), '1h 30m');
+  assert.equal(formatTimeBlockDuration(45), '45m');
+  assert.equal(formatTimeBlockDuration(120), '2h');
+
+  // 2. Time-block range validation
+  const validRange = validateTimeBlockRange('09:00', '10:30');
+  assert.equal(validRange.valid, true);
+  assert.equal(validRange.durationMinutes, 90);
+  assert.equal(validRange.formattedRange, '9:00 AM – 10:30 AM');
+  assert.equal(validRange.formattedDuration, '1h 30m');
+
+  const clearedRange = validateTimeBlockRange('', '');
+  assert.equal(clearedRange.valid, true);
+  assert.equal(clearedRange.durationMinutes, 0);
+  assert.equal(clearedRange.formattedRange, 'Unscheduled');
+
+  const invertedRange = validateTimeBlockRange('14:00', '13:00');
+  assert.equal(invertedRange.valid, false);
+  assert.ok(invertedRange.error);
+
+  const partialRange = validateTimeBlockRange('09:00', '');
+  assert.equal(partialRange.valid, false);
+  assert.ok(partialRange.error);
+
+  // 3. Default seeded tasks resolve time blocks and build a vertical timeline
+  const cols = createInitialWeekColumns();
+  const thuCol = cols.find((c) => c.id === 'thu')!;
+  const thu1Block = resolveDailyTaskTimeBlock(thuCol.tasks[0]);
+  assert.equal(thu1Block.isTimeBlocked, true);
+  assert.equal(thu1Block.startTime, '09:30');
+  assert.equal(thu1Block.endTime, '11:00');
+  assert.equal(thu1Block.durationMinutes, 90);
+
+  const initialTimeline = buildDayTimeBlockTimeline(thuCol.tasks);
+  assert.equal(initialTimeline.totalScheduledBlocks, 3);
+  assert.equal(initialTimeline.completedScheduledBlocks, 1);
+  assert.equal(initialTimeline.totalScheduledMinutes, 90 + 45 + 45);
+  assert.equal(initialTimeline.totalScheduledFormatted, '3h');
+  assert.equal(initialTimeline.overlapCount, 0);
+  assert.ok(initialTimeline.hourTicks.length >= 11);
+
+  // 4. Updating a task time block to overlap with thu-1 (09:30–11:00) detects overlap and assigns lanes
+  const updatedRes = updateDailyTaskTimeBlock(
+    cols,
+    'thu',
+    'thu-2',
+    '10:00',
+    '11:30'
+  );
+  assert.equal(updatedRes.validation.valid, true);
+  assert.ok(updatedRes.updatedTask);
+  const updatedThu = updatedRes.nextColumns.find((c) => c.id === 'thu')!;
+  const overlapTimeline = buildDayTimeBlockTimeline(updatedThu.tasks);
+  assert.equal(overlapTimeline.overlapCount, 2);
+  const block1 = overlapTimeline.scheduledBlocks.find((b) => b.taskId === 'thu-1')!;
+  const block2 = overlapTimeline.scheduledBlocks.find((b) => b.taskId === 'thu-2')!;
+  assert.equal(block1.hasOverlap, true);
+  assert.equal(block2.hasOverlap, true);
+  assert.equal(block1.totalLanes, 2);
+  assert.equal(block2.totalLanes, 2);
+  assert.notEqual(block1.laneIndex, block2.laneIndex);
+
+  // 5. Clearing a task's time block moves it to unscheduledTasks and persists across reload
+  const clearedRes = updateDailyTaskTimeBlock(
+    updatedRes.nextColumns,
+    'thu',
+    'thu-3',
+    '',
+    ''
+  );
+  assert.equal(clearedRes.validation.valid, true);
+  const persisted = parsePersistedDashboardState(
+    JSON.stringify({
+      columns: clearedRes.nextColumns,
+      activeTheme: 'terracotta',
+    })
+  );
+  const persistedThu = persisted.columns.find((c) => c.id === 'thu')!;
+  const postClearTimeline = buildDayTimeBlockTimeline(persistedThu.tasks);
+  assert.equal(postClearTimeline.totalScheduledBlocks, 2);
+  assert.equal(postClearTimeline.unscheduledTasks.length, 1);
+  assert.equal(postClearTimeline.unscheduledTasks[0].id, 'thu-3');
+});
+
+test('calculateTaskCompletionVelocity compares current week completion rate against previous three weeks', () => {
+  // 1. Default initial columns: 10 completed / 22 total = 45%
+  // Historical baseline: 3 Wks Ago = 7/20 (35%), 2 Wks Ago = 8/20 (40%), Last Week = 9/22 (41%)
+  // 3-week avg rate = Math.round((35 + 40 + 41) / 3) = 39%
+  const cols = createInitialWeekColumns();
+  const velocity = calculateTaskCompletionVelocity(cols, '2026-06-11');
+
+  assert.equal(velocity.weeks.length, 4);
+  assert.equal(velocity.previousThreeWeeks.length, 3);
+  assert.equal(velocity.currentCompletionRate, 45);
+  assert.equal(velocity.threeWeekAvgRate, 39);
+  assert.equal(velocity.threeWeekAvgCompleted, 8);
+  assert.equal(velocity.velocityDeltaVsThreeWeekAvg, 6);
+  assert.equal(velocity.velocityDeltaVsLastWeek, 4);
+  assert.equal(velocity.momentumDirection, 'up');
+  assert.equal(velocity.momentumLabel, 'Accelerating');
+  assert.equal(velocity.peakWeek.weekLabel, 'This Week');
+  assert.equal(velocity.weeks[0].wowDeltaRate, null);
+  assert.equal(velocity.weeks[1].wowDeltaRate, 5); // 40 - 35
+  assert.equal(velocity.weeks[2].wowDeltaRate, 1); // 41 - 40
+  assert.equal(velocity.weeks[3].wowDeltaRate, 4); // 45 - 41
+  assert.ok(velocity.insightSummary.includes('outpacing'));
+
+  // 2. Decelerating scenario (clearing completed tasks so current week is 0%)
+  const clearedCols = clearWeekTasks(cols);
+  const decelVelocity = calculateTaskCompletionVelocity(clearedCols, '2026-06-11');
+  assert.equal(decelVelocity.currentCompletionRate, 0);
+  assert.equal(decelVelocity.velocityDeltaVsThreeWeekAvg, -39);
+  assert.equal(decelVelocity.momentumDirection, 'down');
+  assert.equal(decelVelocity.momentumLabel, 'Decelerating');
+  assert.ok(decelVelocity.insightSummary.includes('below your prior 3-week average'));
+
+  // 3. Steady pace scenario via historical overrides matching 45%
+  const steadyVelocity = calculateTaskCompletionVelocity(cols, '2026-06-11', [
+    { completed: 9, pending: 11 }, // 45%
+    { completed: 9, pending: 11 }, // 45%
+    { completed: 9, pending: 11 }, // 45%
+  ]);
+  assert.equal(steadyVelocity.threeWeekAvgRate, 45);
+  assert.equal(steadyVelocity.velocityDeltaVsThreeWeekAvg, 0);
+  assert.equal(steadyVelocity.momentumDirection, 'flat');
+  assert.equal(steadyVelocity.momentumLabel, 'Steady Pace');
+  assert.equal(steadyVelocity.velocityIndex, 100);
+});
+
+
+
 
 

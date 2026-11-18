@@ -1,5 +1,6 @@
 import {
   BulkImportOptions,
+  CalendarTaskFormInput,
   CategoryColorId,
   CustomCategoryDefinition,
   DashboardMetrics,
@@ -11,6 +12,7 @@ import {
   ThemeId,
   ViewMode,
 } from '../utils/todoLogic';
+import { PersonalThemeCustomization } from '../utils/colorScheme';
 
 export interface SharedDashboardPageProps {
   columns: DayColumn[];
@@ -64,6 +66,15 @@ export interface SharedDashboardPageProps {
   ) => number;
   onOpenBulkImportModal?: (defaultDayId?: string) => void;
   onUpdateDailyTaskNotes: (dayId: string, taskId: string, notes: string) => void;
+  onUpdateDailyTaskTimeBlock?: (
+    dayId: string,
+    taskId: string,
+    startTime: string,
+    endTime: string
+  ) => {
+    success: boolean;
+    error?: string;
+  };
   onReorderOrMoveDailyTask: (activeTaskId: string, overId: string) => void;
   onResetWeek: () => void;
   onClearCompletedTasks: () => void;
@@ -81,6 +92,22 @@ export interface SharedDashboardPageProps {
   onCycleGoalStatus: (mode: 'month' | 'year', taskId: string) => void;
   onCycleGoalCategory: (mode: 'month' | 'year', taskId: string) => void;
   onUpdateGoalText: (mode: 'month' | 'year', taskId: string, text: string) => void;
+  onAddCalendarTask?: (input: CalendarTaskFormInput) => {
+    success: boolean;
+    error?: string;
+  };
+  onUpdateCalendarTask?: (
+    taskId: string,
+    input: CalendarTaskFormInput
+  ) => {
+    success: boolean;
+    error?: string;
+  };
+  onDeleteCalendarTask?: (taskId: string) => void;
+  personalCustomization?: PersonalThemeCustomization;
+  onApplyPersonalCustomization?: (next: PersonalThemeCustomization) => void;
+  onResetPersonalCustomization?: () => void;
+  onOpenThemeCustomizerModal?: () => void;
   onExportCsv: () => void;
   onExportJsonBackup?: () => void;
   onImportJsonBackup?: (rawJson: string) => boolean;
@@ -94,5 +121,6 @@ export interface SharedDashboardPageProps {
   onQuickSave?: (customMessage?: string) => void;
   onNavigate: (path: PagePath) => void;
 }
+
 
 

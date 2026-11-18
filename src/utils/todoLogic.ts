@@ -459,6 +459,9 @@ export interface DailyTask {
   recurring?: RecurringInterval;
   completedHour?: number;
   completedAt?: string;
+  scheduledDate?: string;
+  startTime?: string;
+  endTime?: string;
 }
 
 export interface DayColumn {
@@ -3331,7 +3334,7 @@ export function parsePersistedDashboardState(rawJson: string | null): {
                 typeof col?.isToday === 'boolean'
                   ? col.isToday
                   : fallbackCol.isToday,
-              tasks: rawTasks.slice(0, 30).map((task: any, taskIdx: number) => {
+              tasks: rawTasks.slice(0, 60).map((task: any, taskIdx: number) => {
                 const fallbackTask = fallbackCol.tasks[taskIdx];
                 const completed = Boolean(task?.completed);
                 const status: TaskStatus = isValidStatus(task?.status)
@@ -3367,6 +3370,19 @@ export function parsePersistedDashboardState(rawJson: string | null): {
                   recurring: isValidRecurring(task?.recurring)
                     ? task.recurring
                     : fallbackTask?.recurring ?? 'none',
+                  ...(isValidIsoDateString(task?.scheduledDate)
+                    ? { scheduledDate: task.scheduledDate.trim() }
+                    : {}),
+                  ...(task?.startTime === ''
+                    ? { startTime: '' }
+                    : isValidTime24String(task?.startTime)
+                    ? { startTime: task.startTime.trim() }
+                    : {}),
+                  ...(task?.endTime === ''
+                    ? { endTime: '' }
+                    : isValidTime24String(task?.endTime)
+                    ? { endTime: task.endTime.trim() }
+                    : {}),
                 };
               }),
             };
@@ -5223,7 +5239,2238 @@ export function searchTasksAcrossAllDaysAndCategories(input: {
   };
 }
 
+export interface DailyTaskProgressPoint {
+  dayId: string;
+  dayName: string;
+  shortDay: string;
+  dateLabel: string;
+  axisLabel: string;
+  isToday: boolean;
+  completed: number;
+  pending: number;
+  total: number;
+  completionRate: number;
+  cumulativeCompleted: number;
+  completedTaskTitles: string[];
+}
 
+export interface DailyTaskProgressSummary {
+  points: DailyTaskProgressPoint[];
+  totalCompleted: number;
+  totalScheduled: number;
+  totalPending: number;
+  weeklyCompletionRate: number;
+  averageDailyCompleted: number;
+  maxDailyCompleted: number;
+  activeDaysCount: number;
+  peakDay: DailyTaskProgressPoint | null;
+}
+
+/**
+ * Computes daily task completion progress across the current week (Mon-Sun)
+ * directly from the existing DayColumn[] data structure for the Daily Task Progress Line Chart.
+ */
+export function buildDailyTaskProgressLineData(
+  columns: DayColumn[]
+): DailyTaskProgressSummary {
+  let cumulativeCompleted = 0;
+  let totalCompleted = 0;
+  let totalScheduled = 0;
+  let maxDailyCompleted = 0;
+  let activeDaysCount = 0;
+  let peakDay: DailyTaskProgressPoint | null = null;
+
+  const points: DailyTaskProgressPoint[] = columns.map((col) => {
+    const activeTasks = col.tasks.filter((task) => {
+      const clean = task.text.trim();
+      return clean.length > 0 && clean !== '—';
+    });
+
+    const completedTasks = activeTasks.filter((task) => Boolean(task.completed));
+    const completed = completedTasks.length;
+    const total = activeTasks.length;
+    const pending = Math.max(0, total - completed);
+    const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+    cumulativeCompleted += completed;
+    totalCompleted += completed;
+    totalScheduled += total;
+
+    if (completed > 0) {
+      activeDaysCount += 1;
+    }
+
+    const shortDay = col.dayName.slice(0, 3);
+    const point: DailyTaskProgressPoint = {
+      dayId: col.id,
+      dayName: col.dayName,
+      shortDay,
+      dateLabel: col.dateLabel,
+      axisLabel: `${shortDay} (${col.dateLabel})`,
+      isToday: Boolean(col.isToday),
+      completed,
+      pending,
+      total,
+      completionRate,
+      cumulativeCompleted,
+      completedTaskTitles: completedTasks.map((t) => t.text.trim()),
+    };
+
+    if (completed > maxDailyCompleted) {
+      maxDailyCompleted = completed;
+      peakDay = point;
+    }
+
+    return point;
+  });
+
+  const totalPending = Math.max(0, totalScheduled - totalCompleted);
+  const weeklyCompletionRate =
+    totalScheduled > 0
+      ? Math.round((totalCompleted / totalScheduled) * 100)
+      : 0;
+  const averageDailyCompleted =
+    columns.length > 0
+      ? Number((totalCompleted / columns.length).toFixed(1))
+      : 0;
+
+  return {
+    points,
+    totalCompleted,
+    totalScheduled,
+    totalPending,
+    weeklyCompletionRate,
+    averageDailyCompleted,
+    maxDailyCompleted,
+    activeDaysCount,
+    peakDay,
+  };
+}
+
+export type DailyTipCategory =
+  | 'empty'
+  | 'kickoff'
+  | 'high-priority'
+  | 'momentum'
+  | 'final-stretch'
+  | 'completed';
+
+export interface DailyTipInput {
+  totalTasks: number;
+  completedTasks: number;
+  completionPercentage?: number;
+  highPriorityPendingCount?: number;
+}
+
+export interface DailyTipRecommendation {
+  id: string;
+  category: DailyTipCategory;
+  badgeLabel: string;
+  title: string;
+  message: string;
+  actionHint: string;
+  completedTasks: number;
+  totalTasks: number;
+  pendingTasks: number;
+  completionPercentage: number;
+}
+
+/**
+ * Computes a contextual Daily Tip based on the user's current task count and progress status.
+ */
+export function resolveDailyTipRecommendation(
+  input: DailyTipInput
+): DailyTipRecommendation {
+  const totalTasks = Number.isFinite(input.totalTasks)
+    ? Math.max(0, Math.floor(input.totalTasks))
+    : 0;
+  const completedTasks = Number.isFinite(input.completedTasks)
+    ? Math.min(totalTasks, Math.max(0, Math.floor(input.completedTasks)))
+    : 0;
+  const pendingTasks = Math.max(0, totalTasks - completedTasks);
+  const completionPercentage =
+    typeof input.completionPercentage === 'number' &&
+    Number.isFinite(input.completionPercentage)
+      ? Math.min(100, Math.max(0, Math.round(input.completionPercentage)))
+      : totalTasks > 0
+      ? Math.round((completedTasks / totalTasks) * 100)
+      : 0;
+  const highPriorityPending = Number.isFinite(input.highPriorityPendingCount)
+    ? Math.max(0, Math.floor(input.highPriorityPendingCount!))
+    : 0;
+
+  if (totalTasks === 0) {
+    return {
+      id: 'tip-empty-schedule',
+      category: 'empty',
+      badgeLabel: 'Fresh Slate',
+      title: 'Start with 3 anchor tasks for the week',
+      message:
+        'Your weekly board is wide open. Add 1–3 high-impact tasks to today’s column to build immediate clarity.',
+      actionHint: 'Use Quick Add or press N to capture your first task',
+      completedTasks,
+      totalTasks,
+      pendingTasks,
+      completionPercentage,
+    };
+  }
+
+  if (completedTasks >= totalTasks || completionPercentage >= 100) {
+    return {
+      id: 'tip-all-complete',
+      category: 'completed',
+      badgeLabel: '100% Complete',
+      title: 'Every scheduled task is checked off!',
+      message: `You completed all ${totalTasks} tasks on your board. Archive completed items to keep your workspace calm or plan ahead for next week.`,
+      actionHint: 'Click Archive Completed or press A to review your archive',
+      completedTasks,
+      totalTasks,
+      pendingTasks,
+      completionPercentage: 100,
+    };
+  }
+
+  if (completionPercentage >= 75) {
+    return {
+      id: 'tip-final-stretch',
+      category: 'final-stretch',
+      badgeLabel: 'Final Stretch',
+      title: `Only ${pendingTasks} task${pendingTasks === 1 ? '' : 's'} left to hit 100%`,
+      message: `You’re at ${completionPercentage}% weekly completion (${completedTasks}/${totalTasks}). Knock out the easiest remaining item to close out strong.`,
+      actionHint: 'Run a single 25-minute Pomodoro block to finish the rest',
+      completedTasks,
+      totalTasks,
+      pendingTasks,
+      completionPercentage,
+    };
+  }
+
+  if (completedTasks === 0) {
+    return {
+      id: 'tip-kickoff',
+      category: 'kickoff',
+      badgeLabel: 'Quick Win',
+      title: 'Build momentum with a 5-minute starter task',
+      message: `You have ${totalTasks} tasks lined up and 0 completed so far. Checking off just one small task triggers momentum for the rest of the day.`,
+      actionHint: 'Pick your shortest task and start the 25m Focus timer',
+      completedTasks,
+      totalTasks,
+      pendingTasks,
+      completionPercentage,
+    };
+  }
+
+  if (highPriorityPending >= 3 && completionPercentage < 50) {
+    return {
+      id: 'tip-high-priority',
+      category: 'high-priority',
+      badgeLabel: 'Priority Focus',
+      title: `${highPriorityPending} high-priority tasks need attention`,
+      message: `Avoid context switching by tackling your top High-priority item before mid-day tasks pile up (${completedTasks}/${totalTasks} done so far).`,
+      actionHint: 'Tackle 1 High-priority task in a 25m Pomodoro block',
+      completedTasks,
+      totalTasks,
+      pendingTasks,
+      completionPercentage,
+    };
+  }
+
+  return {
+    id: 'tip-steady-momentum',
+    category: 'momentum',
+    badgeLabel: 'Steady Pace',
+    title: `You’re ${completionPercentage}% through your weekly plan (${completedTasks}/${totalTasks})`,
+    message: `With ${pendingTasks} task${pendingTasks === 1 ? '' : 's'} remaining, keep your streak going by batching similar category tags together during your next 25-minute focus block.`,
+    actionHint: 'Click any category tag below to batch similar tasks',
+    completedTasks,
+    totalTasks,
+    pendingTasks,
+    completionPercentage,
+  };
+}
+
+export type PriorityDistributionScope = 'all' | 'weekly' | 'focus';
+
+export interface PriorityDistributionTaskItem {
+  id: string;
+  text: string;
+  completed: boolean;
+  priority: Priority;
+  category: TaskCategory;
+  sourceLabel: string;
+}
+
+export interface PriorityDistributionSlice {
+  priority: Priority;
+  label: string;
+  totalCount: number;
+  completedCount: number;
+  pendingCount: number;
+  percentageOfTotal: number;
+  exactShareRatio: number;
+  completionRate: number;
+  color: string;
+  badgeBg: string;
+  badgeText: string;
+  tasks: PriorityDistributionTaskItem[];
+}
+
+export interface PriorityDistributionSummary {
+  scope: PriorityDistributionScope;
+  slices: PriorityDistributionSlice[];
+  totalTasks: number;
+  totalCompleted: number;
+  totalPending: number;
+  dominantPriority: PriorityDistributionSlice | null;
+}
+
+export const PRIORITY_DONUT_PALETTE: Record<
+  Priority,
+  { label: string; color: string; badgeBg: string; badgeText: string }
+> = {
+  High: {
+    label: 'High Priority',
+    color: '#E68A82',
+    badgeBg: '#F8D5D5',
+    badgeText: '#9B3338',
+  },
+  Med: {
+    label: 'Medium Priority',
+    color: '#EFC776',
+    badgeBg: '#FAE8CE',
+    badgeText: '#946016',
+  },
+  Low: {
+    label: 'Low Priority',
+    color: '#86C79F',
+    badgeBg: '#DFECE0',
+    badgeText: '#266841',
+  },
+};
+
+/**
+ * Computes the distribution of tasks across High, Med, and Low priority levels
+ * for the Priority Distribution Donut Chart section in LiveProgressPage.
+ */
+export function buildPriorityDistributionSummary(input: {
+  columns: DayColumn[];
+  detailedTasks?: DetailedTask[];
+  scope?: PriorityDistributionScope;
+}): PriorityDistributionSummary {
+  const scope: PriorityDistributionScope = input.scope ?? 'all';
+  const detailedTasks = input.detailedTasks ?? [];
+
+  const buckets: Record<Priority, PriorityDistributionTaskItem[]> = {
+    High: [],
+    Med: [],
+    Low: [],
+  };
+
+  if (scope === 'all' || scope === 'weekly') {
+    for (const col of input.columns) {
+      for (const task of col.tasks) {
+        const clean = task.text.trim();
+        if (!clean || clean === '—') continue;
+        const p: Priority =
+          task.priority === 'High' ||
+          task.priority === 'Med' ||
+          task.priority === 'Low'
+            ? task.priority
+            : 'Med';
+        buckets[p].push({
+          id: task.id,
+          text: clean,
+          completed: Boolean(task.completed),
+          priority: p,
+          category: task.category || 'Work',
+          sourceLabel: `${col.dayName.slice(0, 3)} (${col.dateLabel})`,
+        });
+      }
+    }
+  }
+
+  if (scope === 'all' || scope === 'focus') {
+    for (const dt of detailedTasks) {
+      const clean = dt.text.trim();
+      if (!clean || clean === '—') continue;
+      const p: Priority =
+        dt.priority === 'High' || dt.priority === 'Med' || dt.priority === 'Low'
+          ? dt.priority
+          : 'Med';
+      buckets[p].push({
+        id: dt.id,
+        text: clean,
+        completed: Boolean(dt.completed),
+        priority: p,
+        category: dt.category || 'Work',
+        sourceLabel: 'Focus Board',
+      });
+    }
+  }
+
+  const prioritiesOrder: Priority[] = ['High', 'Med', 'Low'];
+  const totalTasks =
+    buckets.High.length + buckets.Med.length + buckets.Low.length;
+
+  let totalCompleted = 0;
+  let dominantPriority: PriorityDistributionSlice | null = null;
+
+  const slices: PriorityDistributionSlice[] = prioritiesOrder.map((priority) => {
+    const items = buckets[priority];
+    const totalCount = items.length;
+    const completedCount = items.filter((t) => t.completed).length;
+    const pendingCount = Math.max(0, totalCount - completedCount);
+    totalCompleted += completedCount;
+
+    const exactShareRatio = totalTasks > 0 ? totalCount / totalTasks : 0;
+    const percentageOfTotal =
+      totalTasks > 0 ? Math.round(exactShareRatio * 100) : 0;
+    const completionRate =
+      totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+    const palette = PRIORITY_DONUT_PALETTE[priority];
+    const slice: PriorityDistributionSlice = {
+      priority,
+      label: palette.label,
+      totalCount,
+      completedCount,
+      pendingCount,
+      percentageOfTotal,
+      exactShareRatio,
+      completionRate,
+      color: palette.color,
+      badgeBg: palette.badgeBg,
+      badgeText: palette.badgeText,
+      tasks: items,
+    };
+
+    if (
+      totalCount > 0 &&
+      (!dominantPriority || totalCount > dominantPriority.totalCount)
+    ) {
+      dominantPriority = slice;
+    }
+
+    return slice;
+  });
+
+  return {
+    scope,
+    slices,
+    totalTasks,
+    totalCompleted,
+    totalPending: Math.max(0, totalTasks - totalCompleted),
+    dominantPriority,
+  };
+}
+
+export interface TaskNoteSummary {
+  hasNotes: boolean;
+  trimmedNotes: string;
+  wordCount: number;
+  previewText: string;
+}
+
+export function formatTaskNoteSummary(
+  notes?: string,
+  maxPreviewLength = 64
+): TaskNoteSummary {
+  const sanitized = sanitizeTaskNotes(notes ?? '').trim();
+  if (!sanitized) {
+    return {
+      hasNotes: false,
+      trimmedNotes: '',
+      wordCount: 0,
+      previewText: '',
+    };
+  }
+  const singleLine = sanitized.replace(/\s+/g, ' ');
+  const wordCount = sanitized.split(/\s+/).filter(Boolean).length;
+  const previewText =
+    singleLine.length > maxPreviewLength
+      ? `${singleLine.slice(0, maxPreviewLength).trim()}…`
+      : singleLine;
+
+  return {
+    hasNotes: true,
+    trimmedNotes: sanitized,
+    wordCount,
+    previewText,
+  };
+}
+
+export function saveDailyTaskNote(
+  columns: DayColumn[],
+  dayId: string,
+  taskId: string,
+  draftNotes: string
+): {
+  nextColumns: DayColumn[];
+  savedNotes: string;
+  updatedTask: DailyTask | null;
+} {
+  const savedNotes = sanitizeTaskNotes(draftNotes);
+  let updatedTask: DailyTask | null = null;
+
+  const nextColumns = columns.map((col) => {
+    if (col.id !== dayId) return col;
+    return {
+      ...col,
+      tasks: col.tasks.map((task) => {
+        if (task.id !== taskId) return task;
+        const next: DailyTask = {
+          ...task,
+          notes: savedNotes,
+        };
+        updatedTask = next;
+        return next;
+      }),
+    };
+  });
+
+  return {
+    nextColumns,
+    savedNotes,
+    updatedTask,
+  };
+}
+
+export const DEFAULT_EOD_TARGET_HOUR = 17; // 5:00 PM End-of-Day
+
+export type EndOfDayUrgencyStatus =
+  | 'plenty'
+  | 'approaching'
+  | 'urgent'
+  | 'past-eod'
+  | 'completed';
+
+export interface EndOfDayTimeRemainingInfo {
+  completed: boolean;
+  targetHour: number;
+  targetLabel: string;
+  targetShortLabel: string;
+  remainingMinutes: number;
+  hoursLeft: number;
+  minutesLeft: number;
+  isPastEndOfDay: boolean;
+  urgency: EndOfDayUrgencyStatus;
+  shortLabel: string;
+  badgeText: string;
+  detailedLabel: string;
+}
+
+export function formatHourLabel(hour24: number): {
+  fullLabel: string;
+  shortLabel: string;
+} {
+  const safeHour = Number.isFinite(hour24)
+    ? Math.min(23, Math.max(1, Math.floor(hour24)))
+    : DEFAULT_EOD_TARGET_HOUR;
+  const suffix = safeHour >= 12 ? 'PM' : 'AM';
+  const suffixLower = safeHour >= 12 ? 'pm' : 'am';
+  const hour12 = safeHour % 12 === 0 ? 12 : safeHour % 12;
+  return {
+    fullLabel: `${hour12}:00 ${suffix}`,
+    shortLabel: `${hour12}${suffixLower}`,
+  };
+}
+
+/**
+ * Calculates the remaining time before the end-of-day (default 5:00 PM / 17:00)
+ * for non-completed daily tasks.
+ */
+export function calculateEndOfDayTimeRemaining(input?: {
+  now?: Date;
+  targetHour?: number;
+  completed?: boolean;
+}): EndOfDayTimeRemainingInfo {
+  const now = input?.now instanceof Date && !Number.isNaN(input.now.getTime())
+    ? input.now
+    : new Date();
+  const targetHour = Number.isFinite(input?.targetHour)
+    ? Math.min(23, Math.max(1, Math.floor(input!.targetHour!)))
+    : DEFAULT_EOD_TARGET_HOUR;
+  const completed = Boolean(input?.completed);
+
+  const { fullLabel: targetLabel, shortLabel: targetShortLabel } =
+    formatHourLabel(targetHour);
+
+  if (completed) {
+    return {
+      completed: true,
+      targetHour,
+      targetLabel,
+      targetShortLabel,
+      remainingMinutes: 0,
+      hoursLeft: 0,
+      minutesLeft: 0,
+      isPastEndOfDay: false,
+      urgency: 'completed',
+      shortLabel: 'Completed',
+      badgeText: 'Completed',
+      detailedLabel: `Task completed before ${targetLabel} end-of-day`,
+    };
+  }
+
+  const targetDate = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    targetHour,
+    0,
+    0,
+    0
+  );
+
+  const diffMs = targetDate.getTime() - now.getTime();
+  if (diffMs <= 0) {
+    return {
+      completed: false,
+      targetHour,
+      targetLabel,
+      targetShortLabel,
+      remainingMinutes: 0,
+      hoursLeft: 0,
+      minutesLeft: 0,
+      isPastEndOfDay: true,
+      urgency: 'past-eod',
+      shortLabel: `Past ${targetShortLabel} EOD`,
+      badgeText: `0m left · Past ${targetShortLabel}`,
+      detailedLabel: `End-of-day cutoff (${targetLabel}) has passed for today`,
+    };
+  }
+
+  const remainingMinutes = Math.ceil(diffMs / 60000);
+  const hoursLeft = Math.floor(remainingMinutes / 60);
+  const minutesLeft = remainingMinutes % 60;
+
+  let shortLabel = '';
+  if (hoursLeft > 0 && minutesLeft > 0) {
+    shortLabel = `${hoursLeft}h ${minutesLeft}m left`;
+  } else if (hoursLeft > 0) {
+    shortLabel = `${hoursLeft}h left`;
+  } else {
+    shortLabel = `${minutesLeft}m left`;
+  }
+
+  const urgency: EndOfDayUrgencyStatus =
+    remainingMinutes <= 60
+      ? 'urgent'
+      : remainingMinutes <= 180
+      ? 'approaching'
+      : 'plenty';
+
+  return {
+    completed: false,
+    targetHour,
+    targetLabel,
+    targetShortLabel,
+    remainingMinutes,
+    hoursLeft,
+    minutesLeft,
+    isPastEndOfDay: false,
+    urgency,
+    shortLabel,
+    badgeText: `${shortLabel} (until ${targetShortLabel})`,
+    detailedLabel: `${shortLabel} remaining before ${targetLabel} end-of-day`,
+  };
+}
+
+export type ResponsiveViewportTier =
+  | 'xs-phone'
+  | 'phone'
+  | 'tablet'
+  | 'laptop'
+  | 'desktop'
+  | 'wide-desktop';
+
+export interface ResponsiveViewportProfile {
+  widthPx: number;
+  tier: ResponsiveViewportTier;
+  isMobile: boolean;
+  isCompactPhone: boolean;
+  isTablet: boolean;
+  isDesktop: boolean;
+  showBottomNav: boolean;
+  showHamburgerMenu: boolean;
+  recommendedDayColumnsPerRow: number;
+  minTouchTargetPx: number;
+}
+
+export function resolveResponsiveViewportTier(
+  rawWidthPx: number
+): ResponsiveViewportProfile {
+  const widthPx =
+    Number.isFinite(rawWidthPx) && rawWidthPx > 0
+      ? Math.round(rawWidthPx)
+      : 1024;
+
+  let tier: ResponsiveViewportTier = 'desktop';
+  let recommendedDayColumnsPerRow = 7;
+
+  if (widthPx < 360) {
+    tier = 'xs-phone';
+    recommendedDayColumnsPerRow = 1;
+  } else if (widthPx < 768) {
+    tier = 'phone';
+    recommendedDayColumnsPerRow = 1;
+  } else if (widthPx < 1024) {
+    tier = 'tablet';
+    recommendedDayColumnsPerRow = 2;
+  } else if (widthPx < 1280) {
+    tier = 'laptop';
+    recommendedDayColumnsPerRow = 4;
+  } else if (widthPx < 1600) {
+    tier = 'desktop';
+    recommendedDayColumnsPerRow = 7;
+  } else {
+    tier = 'wide-desktop';
+    recommendedDayColumnsPerRow = 7;
+  }
+
+  const isMobile = widthPx < 768;
+  const isCompactPhone = widthPx < 390;
+  const isTablet = widthPx >= 768 && widthPx < 1024;
+  const isDesktop = widthPx >= 1024;
+
+  return {
+    widthPx,
+    tier,
+    isMobile,
+    isCompactPhone,
+    isTablet,
+    isDesktop,
+    showBottomNav: widthPx < 768,
+    showHamburgerMenu: widthPx < 1024,
+    recommendedDayColumnsPerRow,
+    minTouchTargetPx: 44,
+  };
+}
+
+export function filterColumnsForMobileDayScope(
+  columns: DayColumn[],
+  dayScope: 'all' | string
+): DayColumn[] {
+  if (!Array.isArray(columns) || columns.length === 0) return [];
+  const normalized = (dayScope || 'all').trim().toLowerCase();
+  if (normalized === 'all') {
+    return columns;
+  }
+  if (normalized === 'today') {
+    const todayCol = columns.find((col) => col.isToday) || columns[0];
+    return todayCol ? [todayCol] : columns;
+  }
+  const matched = columns.find((col) => col.id.toLowerCase() === normalized);
+  return matched ? [matched] : columns;
+}
+
+// ============================================================================
+// INTERACTIVE CALENDAR & PERSONAL TASK MANAGEMENT LOGIC
+// ============================================================================
+
+export type CalendarViewMode = 'month' | 'week' | 'day';
+
+export const DEFAULT_CALENDAR_ANCHOR_DATE = '2026-06-11';
+
+export const SEED_CALENDAR_TASK_TIMES: Record<
+  string,
+  { startTime: string; endTime: string }
+> = {
+  'mon-1': { startTime: '08:30', endTime: '09:00' },
+  'mon-2': { startTime: '09:30', endTime: '10:00' },
+  'mon-3': { startTime: '11:00', endTime: '11:45' },
+  'mon-4': { startTime: '14:00', endTime: '14:30' },
+  'tue-1': { startTime: '09:30', endTime: '11:30' },
+  'tue-2': { startTime: '14:00', endTime: '15:00' },
+  'tue-3': { startTime: '17:15', endTime: '18:00' },
+  'wed-1': { startTime: '09:00', endTime: '10:00' },
+  'wed-2': { startTime: '11:00', endTime: '12:30' },
+  'wed-3': { startTime: '14:30', endTime: '15:30' },
+  'wed-4': { startTime: '17:30', endTime: '18:15' },
+  'thu-1': { startTime: '09:30', endTime: '11:00' },
+  'thu-2': { startTime: '13:00', endTime: '13:45' },
+  'thu-3': { startTime: '16:30', endTime: '17:15' },
+  'fri-1': { startTime: '10:00', endTime: '10:45' },
+  'fri-2': { startTime: '12:30', endTime: '13:00' },
+  'fri-3': { startTime: '15:00', endTime: '16:30' },
+  'sat-1': { startTime: '10:00', endTime: '11:00' },
+  'sat-2': { startTime: '16:00', endTime: '16:45' },
+  'sun-1': { startTime: '11:00', endTime: '12:30' },
+  'sun-2': { startTime: '15:00', endTime: '15:30' },
+  'sun-3': { startTime: '19:30', endTime: '20:30' },
+};
+
+const WEEKDAY_COL_IDS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
+const WEEKDAY_FULL_NAMES = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+] as const;
+const WEEKDAY_SHORT_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+const MONTH_FULL_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+] as const;
+const MONTH_SHORT_NAMES = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
+
+export interface CalendarTaskItem {
+  id: string;
+  title: string;
+  description: string;
+  date: string; // YYYY-MM-DD
+  startTime: string; // HH:MM or ''
+  endTime: string; // HH:MM or ''
+  priority: Priority;
+  status: TaskStatus;
+  completed: boolean;
+  category: TaskCategory;
+  customColor?: CategoryColorId;
+  recurring?: RecurringInterval;
+  dayColumnId: string;
+}
+
+export interface CalendarTaskFormInput {
+  title: string;
+  description?: string;
+  date: string;
+  startTime?: string;
+  endTime?: string;
+  priority: Priority;
+  status: TaskStatus;
+  category: TaskCategory;
+}
+
+export interface CalendarTaskValidationResult {
+  valid: boolean;
+  errors: {
+    title?: string;
+    date?: string;
+    timeRange?: string;
+    duplicate?: string;
+  };
+  sanitized?: {
+    title: string;
+    description: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    priority: Priority;
+    status: TaskStatus;
+    completed: boolean;
+    category: TaskCategory;
+  };
+}
+
+export interface CalendarDayCell {
+  dateStr: string;
+  dayNumber: number;
+  monthIndex: number;
+  year: number;
+  weekdayIndex: number; // 0 = Mon .. 6 = Sun
+  weekdayShort: string;
+  weekdayFull: string;
+  dateShortLabel: string;
+  isCurrentMonth: boolean;
+  isToday: boolean;
+  tasks: CalendarTaskItem[];
+  statusCounts: {
+    pending: number;
+    inProgress: number;
+    completed: number;
+    total: number;
+  };
+}
+
+export interface CalendarMonthGrid {
+  anchorDateStr: string;
+  year: number;
+  monthIndex: number;
+  monthLabel: string;
+  cells: CalendarDayCell[];
+  totalMonthTasks: number;
+  completedMonthTasks: number;
+}
+
+export function isValidIsoDateString(val: unknown): val is string {
+  if (typeof val !== 'string') return false;
+  const trimmed = val.trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < 1970 || year > 2100) return false;
+  if (month < 1 || month > 12) return false;
+  if (day < 1 || day > 31) return false;
+  const d = new Date(year, month - 1, day, 12, 0, 0, 0);
+  return (
+    d.getFullYear() === year &&
+    d.getMonth() === month - 1 &&
+    d.getDate() === day
+  );
+}
+
+export function isValidTime24String(val: unknown): val is string {
+  if (typeof val !== 'string') return false;
+  const trimmed = val.trim();
+  if (!trimmed) return false;
+  const match = /^(\d{2}):(\d{2})$/.exec(trimmed);
+  if (!match) return false;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59;
+}
+
+export function parseIsoDateToLocalNoon(
+  dateStr: string,
+  fallbackDateStr = DEFAULT_CALENDAR_ANCHOR_DATE
+): Date {
+  const target = isValidIsoDateString(dateStr)
+    ? dateStr.trim()
+    : isValidIsoDateString(fallbackDateStr)
+    ? fallbackDateStr.trim()
+    : DEFAULT_CALENDAR_ANCHOR_DATE;
+  const [y, m, d] = target.split('-').map(Number);
+  return new Date(y, m - 1, d, 12, 0, 0, 0);
+}
+
+export function formatDateToIsoString(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function formatTime12Hour(time24?: string): string {
+  if (!time24 || !isValidTime24String(time24)) return '';
+  const [hStr, mStr] = time24.trim().split(':');
+  const h = Number(hStr);
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${mStr} ${period}`;
+}
+
+export function formatCalendarTimeRange(
+  startTime?: string,
+  endTime?: string
+): string {
+  const startFormatted = formatTime12Hour(startTime);
+  const endFormatted = formatTime12Hour(endTime);
+  if (startFormatted && endFormatted) {
+    return `${startFormatted} – ${endFormatted}`;
+  }
+  if (startFormatted) return startFormatted;
+  if (endFormatted) return `Until ${endFormatted}`;
+  return 'All day';
+}
+
+export function formatCalendarDateHeading(dateStr: string): {
+  fullLabel: string;
+  shortLabel: string;
+  monthYearLabel: string;
+  weekdayName: string;
+  dayNumber: number;
+} {
+  const d = parseIsoDateToLocalNoon(dateStr);
+  const jsDay = d.getDay(); // 0=Sun..6=Sat
+  const mondayFirstIdx = jsDay === 0 ? 6 : jsDay - 1;
+  const weekdayName = WEEKDAY_FULL_NAMES[mondayFirstIdx];
+  const weekdayShort = WEEKDAY_SHORT_NAMES[mondayFirstIdx];
+  const monthFull = MONTH_FULL_NAMES[d.getMonth()];
+  const monthShort = MONTH_SHORT_NAMES[d.getMonth()];
+  const dayNumber = d.getDate();
+  const year = d.getFullYear();
+  return {
+    fullLabel: `${weekdayName}, ${monthFull} ${dayNumber}, ${year}`,
+    shortLabel: `${weekdayShort}, ${monthShort} ${dayNumber}`,
+    monthYearLabel: `${monthFull} ${year}`,
+    weekdayName,
+    dayNumber,
+  };
+}
+
+export function resolveDayColumnIdFromIsoDate(dateStr: string): string {
+  const d = parseIsoDateToLocalNoon(dateStr);
+  const jsDay = d.getDay(); // 0 = Sun, 1 = Mon .. 6 = Sat
+  const mondayFirstIdx = jsDay === 0 ? 6 : jsDay - 1;
+  return WEEKDAY_COL_IDS[mondayFirstIdx] ?? 'mon';
+}
+
+export function resolveWeekIsoDatesFromAnchor(
+  anchorDateStr: string = DEFAULT_CALENDAR_ANCHOR_DATE
+): Record<string, string> {
+  const parsed = parseIsoDateToLocalNoon(anchorDateStr);
+  const jsDay = parsed.getDay();
+  const diffToMonday = jsDay === 0 ? -6 : 1 - jsDay;
+  const monday = new Date(parsed);
+  monday.setDate(parsed.getDate() + diffToMonday);
+
+  const map: Record<string, string> = {};
+  for (let i = 0; i < 7; i++) {
+    const cur = new Date(monday);
+    cur.setDate(monday.getDate() + i);
+    map[WEEKDAY_COL_IDS[i]] = formatDateToIsoString(cur);
+  }
+  return map;
+}
+
+export function navigateCalendarDate(
+  currentDateStr: string,
+  viewMode: CalendarViewMode,
+  direction: 'prev' | 'next'
+): string {
+  const d = parseIsoDateToLocalNoon(currentDateStr);
+  const delta = direction === 'next' ? 1 : -1;
+
+  if (viewMode === 'day') {
+    d.setDate(d.getDate() + delta);
+    return formatDateToIsoString(d);
+  }
+
+  if (viewMode === 'week') {
+    d.setDate(d.getDate() + delta * 7);
+    return formatDateToIsoString(d);
+  }
+
+  // Monthly view navigation with safe day-of-month clamping
+  const originalDay = d.getDate();
+  const targetYear = d.getFullYear();
+  const targetMonth = d.getMonth() + delta;
+  const lastDayOfTargetMonth = new Date(
+    targetYear,
+    targetMonth + 1,
+    0,
+    12,
+    0,
+    0,
+    0
+  ).getDate();
+  const clampedDay = Math.min(originalDay, lastDayOfTargetMonth);
+  const nextMonthDate = new Date(
+    targetYear,
+    targetMonth,
+    clampedDay,
+    12,
+    0,
+    0,
+    0
+  );
+  return formatDateToIsoString(nextMonthDate);
+}
+
+const PRIORITY_SORT_WEIGHT: Record<Priority, number> = {
+  High: 0,
+  Med: 1,
+  Low: 2,
+};
+
+export function sortCalendarTasks(tasks: CalendarTaskItem[]): CalendarTaskItem[] {
+  return [...tasks].sort((a, b) => {
+    const aHasTime = Boolean(a.startTime);
+    const bHasTime = Boolean(b.startTime);
+    if (aHasTime && bHasTime && a.startTime !== b.startTime) {
+      return a.startTime.localeCompare(b.startTime);
+    }
+    if (aHasTime !== bHasTime) {
+      return aHasTime ? -1 : 1;
+    }
+    const pDiff =
+      (PRIORITY_SORT_WEIGHT[a.priority] ?? 1) -
+      (PRIORITY_SORT_WEIGHT[b.priority] ?? 1);
+    if (pDiff !== 0) return pDiff;
+    return a.id.localeCompare(b.id);
+  });
+}
+
+export function extractCalendarTasksFromColumns(
+  columns: DayColumn[],
+  referenceWeekAnchorDate: string = DEFAULT_CALENDAR_ANCHOR_DATE
+): CalendarTaskItem[] {
+  if (!Array.isArray(columns)) return [];
+  const defaultWeekIsoMap = resolveWeekIsoDatesFromAnchor(referenceWeekAnchorDate);
+  const items: CalendarTaskItem[] = [];
+
+  for (const col of columns) {
+    const fallbackDate =
+      defaultWeekIsoMap[col.id.toLowerCase()] ?? DEFAULT_CALENDAR_ANCHOR_DATE;
+    for (const task of col.tasks) {
+      const cleanTitle = (task.text || '').trim();
+      if (!cleanTitle || cleanTitle === '—') continue;
+
+      const resolvedDate =
+        task.scheduledDate && isValidIsoDateString(task.scheduledDate)
+          ? task.scheduledDate.trim()
+          : fallbackDate;
+
+      const seedTimes = SEED_CALENDAR_TASK_TIMES[task.id];
+      const startTime =
+        task.startTime !== undefined
+          ? isValidTime24String(task.startTime)
+            ? task.startTime.trim()
+            : ''
+          : seedTimes?.startTime ?? '';
+      const endTime =
+        task.endTime !== undefined
+          ? isValidTime24String(task.endTime)
+            ? task.endTime.trim()
+            : ''
+          : seedTimes?.endTime ?? '';
+
+      items.push({
+        id: task.id,
+        title: cleanTitle,
+        description: (task.notes || '').trim(),
+        date: resolvedDate,
+        startTime,
+        endTime,
+        priority: task.priority,
+        status: task.status,
+        completed: Boolean(task.completed),
+        category: task.category,
+        customColor: task.customColor,
+        recurring: task.recurring,
+        dayColumnId: col.id,
+      });
+    }
+  }
+
+  return sortCalendarTasks(items);
+}
+
+function buildStatusCounts(tasks: CalendarTaskItem[]) {
+  let pending = 0;
+  let inProgress = 0;
+  let completed = 0;
+  for (const t of tasks) {
+    if (t.completed || t.status === 'Done') {
+      completed++;
+    } else if (t.status === 'In Progress') {
+      inProgress++;
+    } else {
+      pending++;
+    }
+  }
+  return {
+    pending,
+    inProgress,
+    completed,
+    total: tasks.length,
+  };
+}
+
+export function getTasksForCalendarDate(
+  dateStr: string,
+  columns: DayColumn[],
+  referenceWeekAnchorDate: string = DEFAULT_CALENDAR_ANCHOR_DATE
+): CalendarTaskItem[] {
+  if (!isValidIsoDateString(dateStr)) return [];
+  const target = dateStr.trim();
+  const all = extractCalendarTasksFromColumns(columns, referenceWeekAnchorDate);
+  return sortCalendarTasks(all.filter((t) => t.date === target));
+}
+
+export function buildCalendarMonthGrid(
+  anchorDateStr: string,
+  todayDateStr: string = DEFAULT_CALENDAR_ANCHOR_DATE,
+  columns: DayColumn[] = [],
+  referenceWeekAnchorDate: string = DEFAULT_CALENDAR_ANCHOR_DATE
+): CalendarMonthGrid {
+  const anchor = parseIsoDateToLocalNoon(anchorDateStr);
+  const year = anchor.getFullYear();
+  const monthIndex = anchor.getMonth();
+  const monthLabel = `${MONTH_FULL_NAMES[monthIndex]} ${year}`;
+
+  const firstOfMonth = new Date(year, monthIndex, 1, 12, 0, 0, 0);
+  const firstJsDay = firstOfMonth.getDay(); // 0 = Sun, 1 = Mon .. 6 = Sat
+  const leadingDays = firstJsDay === 0 ? 6 : firstJsDay - 1;
+
+  const gridStartDate = new Date(year, monthIndex, 1 - leadingDays, 12, 0, 0, 0);
+  const allTasks = extractCalendarTasksFromColumns(
+    columns,
+    referenceWeekAnchorDate
+  );
+
+  const tasksByDate = new Map<string, CalendarTaskItem[]>();
+  for (const task of allTasks) {
+    const existing = tasksByDate.get(task.date) || [];
+    existing.push(task);
+    tasksByDate.set(task.date, existing);
+  }
+
+  const cells: CalendarDayCell[] = [];
+  let totalMonthTasks = 0;
+  let completedMonthTasks = 0;
+
+  for (let i = 0; i < 42; i++) {
+    const cellDate = new Date(gridStartDate);
+    cellDate.setDate(gridStartDate.getDate() + i);
+    const dateStr = formatDateToIsoString(cellDate);
+    const isCurrentMonth =
+      cellDate.getFullYear() === year && cellDate.getMonth() === monthIndex;
+    const weekdayIndex = i % 7;
+    const dayTasks = sortCalendarTasks(tasksByDate.get(dateStr) || []);
+    const statusCounts = buildStatusCounts(dayTasks);
+
+    if (isCurrentMonth) {
+      totalMonthTasks += statusCounts.total;
+      completedMonthTasks += statusCounts.completed;
+    }
+
+    cells.push({
+      dateStr,
+      dayNumber: cellDate.getDate(),
+      monthIndex: cellDate.getMonth(),
+      year: cellDate.getFullYear(),
+      weekdayIndex,
+      weekdayShort: WEEKDAY_SHORT_NAMES[weekdayIndex],
+      weekdayFull: WEEKDAY_FULL_NAMES[weekdayIndex],
+      dateShortLabel: `${MONTH_SHORT_NAMES[cellDate.getMonth()]} ${cellDate.getDate()}`,
+      isCurrentMonth,
+      isToday: dateStr === todayDateStr,
+      tasks: dayTasks,
+      statusCounts,
+    });
+  }
+
+  return {
+    anchorDateStr: formatDateToIsoString(anchor),
+    year,
+    monthIndex,
+    monthLabel,
+    cells,
+    totalMonthTasks,
+    completedMonthTasks,
+  };
+}
+
+export function buildCalendarWeekSchedule(
+  anchorDateStr: string,
+  todayDateStr: string = DEFAULT_CALENDAR_ANCHOR_DATE,
+  columns: DayColumn[] = [],
+  referenceWeekAnchorDate: string = DEFAULT_CALENDAR_ANCHOR_DATE
+): CalendarDayCell[] {
+  const weekIsoMap = resolveWeekIsoDatesFromAnchor(anchorDateStr);
+  const allTasks = extractCalendarTasksFromColumns(
+    columns,
+    referenceWeekAnchorDate
+  );
+  const anchor = parseIsoDateToLocalNoon(anchorDateStr);
+
+  return WEEKDAY_COL_IDS.map((colId, idx) => {
+    const dateStr = weekIsoMap[colId];
+    const d = parseIsoDateToLocalNoon(dateStr);
+    const dayTasks = sortCalendarTasks(
+      allTasks.filter((t) => t.date === dateStr)
+    );
+    return {
+      dateStr,
+      dayNumber: d.getDate(),
+      monthIndex: d.getMonth(),
+      year: d.getFullYear(),
+      weekdayIndex: idx,
+      weekdayShort: WEEKDAY_SHORT_NAMES[idx],
+      weekdayFull: WEEKDAY_FULL_NAMES[idx],
+      dateShortLabel: `${MONTH_SHORT_NAMES[d.getMonth()]} ${d.getDate()}`,
+      isCurrentMonth: d.getMonth() === anchor.getMonth(),
+      isToday: dateStr === todayDateStr,
+      tasks: dayTasks,
+      statusCounts: buildStatusCounts(dayTasks),
+    };
+  });
+}
+
+export function validateCalendarTaskInput(
+  input: CalendarTaskFormInput,
+  existingTasks: CalendarTaskItem[] = [],
+  editingTaskId?: string
+): CalendarTaskValidationResult {
+  const errors: CalendarTaskValidationResult['errors'] = {};
+
+  const cleanTitle = sanitizeTaskText(input?.title ?? '', 140).trim();
+  if (!cleanTitle || cleanTitle === '—') {
+    errors.title = 'Task title is required.';
+  }
+
+  const cleanDate = typeof input?.date === 'string' ? input.date.trim() : '';
+  if (!cleanDate || !isValidIsoDateString(cleanDate)) {
+    errors.date = 'Please select a valid scheduled date (YYYY-MM-DD).';
+  }
+
+  const rawStart = typeof input?.startTime === 'string' ? input.startTime.trim() : '';
+  const rawEnd = typeof input?.endTime === 'string' ? input.endTime.trim() : '';
+
+  if (rawStart && !isValidTime24String(rawStart)) {
+    errors.timeRange = 'Start time must be in valid HH:MM format.';
+  } else if (rawEnd && !isValidTime24String(rawEnd)) {
+    errors.timeRange = 'End time must be in valid HH:MM format.';
+  } else if (rawStart && rawEnd && rawEnd < rawStart) {
+    errors.timeRange = 'End time must be after or equal to start time.';
+  }
+
+  if (!errors.title && !errors.date) {
+    const duplicate = existingTasks.find(
+      (t) =>
+        t.id !== editingTaskId &&
+        t.date === cleanDate &&
+        t.title.toLowerCase() === cleanTitle.toLowerCase() &&
+        (t.startTime || '') === rawStart
+    );
+    if (duplicate) {
+      errors.duplicate =
+        'A task with this exact title and time already exists on the selected date.';
+    }
+  }
+
+  const valid = Object.keys(errors).length === 0;
+  if (!valid) {
+    return { valid: false, errors };
+  }
+
+  const priority: Priority = isValidPriority(input.priority)
+    ? input.priority
+    : 'Med';
+  const status: TaskStatus = isValidStatus(input.status)
+    ? input.status
+    : 'To Do';
+  const completed = status === 'Done';
+  const rawCat = typeof input.category === 'string' ? input.category.trim() : 'Work';
+  const category: TaskCategory =
+    sanitizeCustomCategoryName(rawCat) || 'Work';
+  const description = sanitizeTaskNotes(input?.description ?? '');
+
+  return {
+    valid: true,
+    errors: {},
+    sanitized: {
+      title: cleanTitle,
+      description,
+      date: cleanDate,
+      startTime: rawStart,
+      endTime: rawEnd,
+      priority,
+      status,
+      completed,
+      category,
+    },
+  };
+}
+
+export function addPersonalCalendarTask(
+  columns: DayColumn[],
+  input: CalendarTaskFormInput,
+  referenceWeekAnchorDate: string = DEFAULT_CALENDAR_ANCHOR_DATE
+): {
+  nextColumns: DayColumn[];
+  createdTask: DailyTask | null;
+  validation: CalendarTaskValidationResult;
+} {
+  const existingTasks = extractCalendarTasksFromColumns(
+    columns,
+    referenceWeekAnchorDate
+  );
+  const validation = validateCalendarTaskInput(input, existingTasks);
+  if (!validation.valid || !validation.sanitized) {
+    return {
+      nextColumns: columns,
+      createdTask: null,
+      validation,
+    };
+  }
+
+  const {
+    title,
+    description,
+    date,
+    startTime,
+    endTime,
+    priority,
+    status,
+    completed,
+    category,
+  } = validation.sanitized;
+
+  const targetDayColId = resolveDayColumnIdFromIsoDate(date);
+  let createdTask: DailyTask | null = null;
+
+  const nextColumns = columns.map((col) => {
+    if (col.id.toLowerCase() !== targetDayColId) return col;
+
+    const emptySlotIdx = col.tasks.findIndex(
+      (t) => t.text.trim().length === 0
+    );
+
+    if (emptySlotIdx !== -1) {
+      const slot = col.tasks[emptySlotIdx];
+      const populated: DailyTask = {
+        ...slot,
+        text: title,
+        notes: description,
+        priority,
+        status,
+        completed,
+        category,
+        scheduledDate: date,
+        startTime,
+        endTime,
+        ...(completed ? { completedHour: new Date().getHours() } : {}),
+      };
+      createdTask = populated;
+      const nextTasks = [...col.tasks];
+      nextTasks[emptySlotIdx] = populated;
+      return { ...col, tasks: nextTasks };
+    }
+
+    const newTask: DailyTask = {
+      id: `${col.id}-cal-${Date.now()}-${col.tasks.length + 1}`,
+      text: title,
+      notes: description,
+      priority,
+      status,
+      completed,
+      category,
+      recurring: 'none',
+      scheduledDate: date,
+      startTime,
+      endTime,
+      ...(completed ? { completedHour: new Date().getHours() } : {}),
+    };
+    createdTask = newTask;
+    return {
+      ...col,
+      tasks: [...col.tasks, newTask],
+    };
+  });
+
+  return {
+    nextColumns,
+    createdTask,
+    validation,
+  };
+}
+
+export function updatePersonalCalendarTask(
+  columns: DayColumn[],
+  taskId: string,
+  input: CalendarTaskFormInput,
+  referenceWeekAnchorDate: string = DEFAULT_CALENDAR_ANCHOR_DATE
+): {
+  nextColumns: DayColumn[];
+  updatedTask: DailyTask | null;
+  validation: CalendarTaskValidationResult;
+} {
+  const existingTasks = extractCalendarTasksFromColumns(
+    columns,
+    referenceWeekAnchorDate
+  );
+  const validation = validateCalendarTaskInput(
+    input,
+    existingTasks,
+    taskId
+  );
+  if (!validation.valid || !validation.sanitized) {
+    return {
+      nextColumns: columns,
+      updatedTask: null,
+      validation,
+    };
+  }
+
+  const {
+    title,
+    description,
+    date,
+    startTime,
+    endTime,
+    priority,
+    status,
+    completed,
+    category,
+  } = validation.sanitized;
+
+  let sourceColId: string | null = null;
+  let originalTask: DailyTask | null = null;
+  for (const col of columns) {
+    const found = col.tasks.find((t) => t.id === taskId);
+    if (found) {
+      sourceColId = col.id;
+      originalTask = found;
+      break;
+    }
+  }
+
+  if (!sourceColId || !originalTask) {
+    return {
+      nextColumns: columns,
+      updatedTask: null,
+      validation,
+    };
+  }
+
+  const targetColId = resolveDayColumnIdFromIsoDate(date);
+  const updatedTask: DailyTask = {
+    ...originalTask,
+    text: title,
+    notes: description,
+    scheduledDate: date,
+    startTime,
+    endTime,
+    priority,
+    status,
+    completed,
+    category,
+  };
+
+  if (sourceColId.toLowerCase() === targetColId) {
+    const nextColumns = columns.map((col) =>
+      col.id === sourceColId
+        ? {
+            ...col,
+            tasks: col.tasks.map((t) => (t.id === taskId ? updatedTask : t)),
+          }
+        : col
+    );
+    return {
+      nextColumns,
+      updatedTask,
+      validation,
+    };
+  }
+
+  // Task moved to a different weekday column
+  const nextColumns = columns.map((col) => {
+    if (col.id === sourceColId) {
+      if (col.tasks.length > 6) {
+        return {
+          ...col,
+          tasks: col.tasks.filter((t) => t.id !== taskId),
+        };
+      }
+      return {
+        ...col,
+        tasks: col.tasks.map((t): DailyTask =>
+          t.id === taskId
+            ? {
+                id: `${col.id}-slot-${Date.now()}`,
+                text: '',
+                completed: false,
+                priority: 'Med',
+                status: 'To Do',
+                category: 'Personal',
+                notes: '',
+                recurring: 'none',
+              }
+            : t
+        ),
+      };
+    }
+
+    if (col.id.toLowerCase() === targetColId) {
+      const emptyIdx = col.tasks.findIndex((t) => t.text.trim().length === 0);
+      if (emptyIdx !== -1) {
+        const nextTasks = [...col.tasks];
+        nextTasks[emptyIdx] = updatedTask;
+        return { ...col, tasks: nextTasks };
+      }
+      return {
+        ...col,
+        tasks: [...col.tasks, updatedTask],
+      };
+    }
+
+    return col;
+  });
+
+  return {
+    nextColumns,
+    updatedTask,
+    validation,
+  };
+}
+
+export function deletePersonalCalendarTask(
+  columns: DayColumn[],
+  taskId: string
+): {
+  nextColumns: DayColumn[];
+  deletedTask: DailyTask | null;
+} {
+  let deletedTask: DailyTask | null = null;
+
+  const nextColumns = columns.map((col) => {
+    const idx = col.tasks.findIndex((t) => t.id === taskId);
+    if (idx === -1) return col;
+
+    deletedTask = col.tasks[idx];
+    if (col.tasks.length > 6) {
+      return {
+        ...col,
+        tasks: col.tasks.filter((t) => t.id !== taskId),
+      };
+    }
+
+    const nextTasks = [...col.tasks];
+    nextTasks[idx] = {
+      id: taskId,
+      text: '',
+      completed: false,
+      priority: 'Med',
+      status: 'To Do',
+      category: 'Personal',
+      notes: '',
+      recurring: 'none',
+    };
+    return {
+      ...col,
+      tasks: nextTasks,
+    };
+  });
+
+  return {
+    nextColumns,
+    deletedTask,
+  };
+}
+
+// ============================================================================
+// DAILY TIME-BLOCKING & VERTICAL TIMELINE LOGIC
+// ============================================================================
+
+export interface TimeBlockValidationResult {
+  valid: boolean;
+  error?: string;
+  startTime: string;
+  endTime: string;
+  durationMinutes: number;
+  formattedRange: string;
+  formattedDuration: string;
+}
+
+export interface DayTimelineHourTick {
+  hour: number;
+  time24: string;
+  label12h: string;
+  shortLabel: string;
+  offsetPercent: number;
+}
+
+export interface DayTimelineBlockItem {
+  taskId: string;
+  text: string;
+  completed: boolean;
+  priority: Priority;
+  status: TaskStatus;
+  category: TaskCategory;
+  customColor?: CategoryColorId;
+  notes?: string;
+  startTime: string;
+  endTime: string;
+  startMinutes: number;
+  endMinutes: number;
+  durationMinutes: number;
+  formattedRange: string;
+  formattedDuration: string;
+  topPercent: number;
+  heightPercent: number;
+  hasOverlap: boolean;
+  laneIndex: number;
+  totalLanes: number;
+}
+
+export interface DayTimeBlockTimelineSummary {
+  timelineStartHour: number;
+  timelineEndHour: number;
+  timelineStartMinutes: number;
+  timelineEndMinutes: number;
+  totalSpanMinutes: number;
+  hourTicks: DayTimelineHourTick[];
+  scheduledBlocks: DayTimelineBlockItem[];
+  unscheduledTasks: DailyTask[];
+  totalScheduledBlocks: number;
+  completedScheduledBlocks: number;
+  totalScheduledMinutes: number;
+  totalScheduledFormatted: string;
+  overlapCount: number;
+}
+
+export function parseTime24ToMinutes(timeStr?: string): number | null {
+  if (!timeStr || !isValidTime24String(timeStr)) return null;
+  const [hStr, mStr] = timeStr.trim().split(':');
+  const h = Number(hStr);
+  const m = Number(mStr);
+  return h * 60 + m;
+}
+
+export function formatMinutesToTime24(totalMinutes: number): string {
+  const clamped = Math.max(0, Math.min(23 * 60 + 59, Math.round(totalMinutes)));
+  const h = Math.floor(clamped / 60);
+  const m = clamped % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+export function addMinutesToTime24(
+  startTime: string,
+  durationMinutes: number
+): string {
+  const startMins = parseTime24ToMinutes(startTime) ?? 9 * 60;
+  return formatMinutesToTime24(startMins + durationMinutes);
+}
+
+export function calculateTimeBlockDurationMinutes(
+  startTime?: string,
+  endTime?: string
+): number {
+  const startMins = parseTime24ToMinutes(startTime);
+  const endMins = parseTime24ToMinutes(endTime);
+  if (startMins === null || endMins === null || endMins <= startMins) {
+    return 0;
+  }
+  return endMins - startMins;
+}
+
+export function formatTimeBlockDuration(durationMinutes: number): string {
+  if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) return '';
+  const rounded = Math.round(durationMinutes);
+  const hours = Math.floor(rounded / 60);
+  const mins = rounded % 60;
+  if (hours > 0 && mins > 0) return `${hours}h ${mins}m`;
+  if (hours > 0) return `${hours}h`;
+  return `${mins}m`;
+}
+
+export function validateTimeBlockRange(
+  startTime?: string,
+  endTime?: string
+): TimeBlockValidationResult {
+  const rawStart = typeof startTime === 'string' ? startTime.trim() : '';
+  const rawEnd = typeof endTime === 'string' ? endTime.trim() : '';
+
+  if (!rawStart && !rawEnd) {
+    return {
+      valid: true,
+      startTime: '',
+      endTime: '',
+      durationMinutes: 0,
+      formattedRange: 'Unscheduled',
+      formattedDuration: '',
+    };
+  }
+
+  if (!rawStart || !rawEnd) {
+    return {
+      valid: false,
+      error: 'Please specify both a start time and an end time.',
+      startTime: rawStart,
+      endTime: rawEnd,
+      durationMinutes: 0,
+      formattedRange: '',
+      formattedDuration: '',
+    };
+  }
+
+  const startMins = parseTime24ToMinutes(rawStart);
+  const endMins = parseTime24ToMinutes(rawEnd);
+
+  if (startMins === null || endMins === null) {
+    return {
+      valid: false,
+      error: 'Times must be in valid 24-hour HH:MM format.',
+      startTime: rawStart,
+      endTime: rawEnd,
+      durationMinutes: 0,
+      formattedRange: '',
+      formattedDuration: '',
+    };
+  }
+
+  if (endMins <= startMins) {
+    return {
+      valid: false,
+      error: 'End time must be later than start time.',
+      startTime: rawStart,
+      endTime: rawEnd,
+      durationMinutes: 0,
+      formattedRange: '',
+      formattedDuration: '',
+    };
+  }
+
+  const durationMinutes = endMins - startMins;
+  return {
+    valid: true,
+    startTime: rawStart,
+    endTime: rawEnd,
+    durationMinutes,
+    formattedRange: `${formatTime12Hour(rawStart)} – ${formatTime12Hour(rawEnd)}`,
+    formattedDuration: formatTimeBlockDuration(durationMinutes),
+  };
+}
+
+export function resolveDailyTaskTimeBlock(task: DailyTask): {
+  startTime: string;
+  endTime: string;
+  isTimeBlocked: boolean;
+  durationMinutes: number;
+  formattedRange: string;
+  formattedDuration: string;
+} {
+  const hasExplicitField =
+    task.startTime !== undefined || task.endTime !== undefined;
+  const seed = !hasExplicitField ? SEED_CALENDAR_TASK_TIMES[task.id] : undefined;
+
+  const rawStart = hasExplicitField
+    ? isValidTime24String(task.startTime)
+      ? task.startTime.trim()
+      : ''
+    : seed?.startTime ?? '';
+  const rawEnd = hasExplicitField
+    ? isValidTime24String(task.endTime)
+      ? task.endTime.trim()
+      : ''
+    : seed?.endTime ?? '';
+
+  const durationMinutes = calculateTimeBlockDurationMinutes(rawStart, rawEnd);
+  const isTimeBlocked = durationMinutes > 0;
+
+  return {
+    startTime: isTimeBlocked ? rawStart : '',
+    endTime: isTimeBlocked ? rawEnd : '',
+    isTimeBlocked,
+    durationMinutes,
+    formattedRange: isTimeBlocked
+      ? `${formatTime12Hour(rawStart)} – ${formatTime12Hour(rawEnd)}`
+      : 'Unscheduled',
+    formattedDuration: formatTimeBlockDuration(durationMinutes),
+  };
+}
+
+export function updateDailyTaskTimeBlock(
+  columns: DayColumn[],
+  dayId: string,
+  taskId: string,
+  startTime?: string,
+  endTime?: string
+): {
+  nextColumns: DayColumn[];
+  updatedTask: DailyTask | null;
+  validation: TimeBlockValidationResult;
+} {
+  const validation = validateTimeBlockRange(startTime, endTime);
+  if (!validation.valid) {
+    return {
+      nextColumns: columns,
+      updatedTask: null,
+      validation,
+    };
+  }
+
+  let updatedTask: DailyTask | null = null;
+  const nextColumns = columns.map((col) => {
+    if (col.id !== dayId) return col;
+    return {
+      ...col,
+      tasks: col.tasks.map((task) => {
+        if (task.id !== taskId) return task;
+        const nextTask: DailyTask = {
+          ...task,
+          startTime: validation.startTime,
+          endTime: validation.endTime,
+        };
+        updatedTask = nextTask;
+        return nextTask;
+      }),
+    };
+  });
+
+  return {
+    nextColumns,
+    updatedTask,
+    validation,
+  };
+}
+
+export function buildDayTimeBlockTimeline(
+  tasks: DailyTask[],
+  options?: { minHour?: number; maxHour?: number }
+): DayTimeBlockTimelineSummary {
+  const defaultMinHour = options?.minHour ?? 8;
+  const defaultMaxHour = options?.maxHour ?? 18;
+
+  const activeTasks = (Array.isArray(tasks) ? tasks : []).filter(
+    (t) => t && typeof t.text === 'string' && t.text.trim().length > 0 && t.text.trim() !== '—'
+  );
+
+  const rawBlocks: Array<{
+    task: DailyTask;
+    startTime: string;
+    endTime: string;
+    startMinutes: number;
+    endMinutes: number;
+    durationMinutes: number;
+    formattedRange: string;
+    formattedDuration: string;
+  }> = [];
+  const unscheduledTasks: DailyTask[] = [];
+
+  for (const task of activeTasks) {
+    const resolved = resolveDailyTaskTimeBlock(task);
+    if (resolved.isTimeBlocked) {
+      const startMinutes = parseTime24ToMinutes(resolved.startTime)!;
+      const endMinutes = parseTime24ToMinutes(resolved.endTime)!;
+      rawBlocks.push({
+        task,
+        startTime: resolved.startTime,
+        endTime: resolved.endTime,
+        startMinutes,
+        endMinutes,
+        durationMinutes: resolved.durationMinutes,
+        formattedRange: resolved.formattedRange,
+        formattedDuration: resolved.formattedDuration,
+      });
+    } else {
+      unscheduledTasks.push(task);
+    }
+  }
+
+  rawBlocks.sort((a, b) => {
+    if (a.startMinutes !== b.startMinutes) return a.startMinutes - b.startMinutes;
+    if (a.endMinutes !== b.endMinutes) return a.endMinutes - b.endMinutes;
+    return a.task.id.localeCompare(b.task.id);
+  });
+
+  let minHour = defaultMinHour;
+  let maxHour = defaultMaxHour;
+
+  if (rawBlocks.length > 0) {
+    const earliestHour = Math.floor(
+      Math.min(...rawBlocks.map((b) => b.startMinutes)) / 60
+    );
+    const latestHour = Math.ceil(
+      Math.max(...rawBlocks.map((b) => b.endMinutes)) / 60
+    );
+    minHour = Math.max(0, Math.min(minHour, earliestHour));
+    maxHour = Math.min(24, Math.max(maxHour, latestHour, minHour + 4));
+  }
+
+  const timelineStartMinutes = minHour * 60;
+  const timelineEndMinutes = maxHour * 60;
+  const totalSpanMinutes = Math.max(60, timelineEndMinutes - timelineStartMinutes);
+
+  const hourTicks: DayTimelineHourTick[] = [];
+  for (let h = minHour; h <= maxHour; h++) {
+    const time24 = `${String(h % 24).padStart(2, '0')}:00`;
+    const period = h >= 12 && h < 24 ? 'PM' : 'AM';
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    const offsetPercent = Number(
+      (((h * 60 - timelineStartMinutes) / totalSpanMinutes) * 100).toFixed(2)
+    );
+    hourTicks.push({
+      hour: h,
+      time24,
+      label12h: `${h12}:00 ${period}`,
+      shortLabel: `${h12}${period.toLowerCase()}`,
+      offsetPercent,
+    });
+  }
+
+  // Detect overlaps & assign lanes for concurrent blocks
+  let overlapCount = 0;
+  const scheduledBlocks: DayTimelineBlockItem[] = rawBlocks.map((item, idx) => {
+    const overlappingIndices: number[] = [];
+    for (let j = 0; j < rawBlocks.length; j++) {
+      const other = rawBlocks[j];
+      if (
+        item.startMinutes < other.endMinutes &&
+        item.endMinutes > other.startMinutes
+      ) {
+        overlappingIndices.push(j);
+      }
+    }
+    const hasOverlap = overlappingIndices.length > 1;
+    if (hasOverlap) {
+      overlapCount++;
+    }
+    const laneIndex = Math.max(0, overlappingIndices.indexOf(idx));
+    const totalLanes = Math.max(1, overlappingIndices.length);
+
+    const rawTop =
+      ((item.startMinutes - timelineStartMinutes) / totalSpanMinutes) * 100;
+    const rawHeight = (item.durationMinutes / totalSpanMinutes) * 100;
+    const topPercent = Number(Math.max(0, Math.min(96, rawTop)).toFixed(2));
+    const heightPercent = Number(
+      Math.max(5.5, Math.min(100 - topPercent, rawHeight)).toFixed(2)
+    );
+
+    return {
+      taskId: item.task.id,
+      text: item.task.text,
+      completed: item.task.completed,
+      priority: item.task.priority,
+      status: item.task.status,
+      category: item.task.category,
+      customColor: item.task.customColor,
+      notes: item.task.notes,
+      startTime: item.startTime,
+      endTime: item.endTime,
+      startMinutes: item.startMinutes,
+      endMinutes: item.endMinutes,
+      durationMinutes: item.durationMinutes,
+      formattedRange: item.formattedRange,
+      formattedDuration: item.formattedDuration,
+      topPercent,
+      heightPercent,
+      hasOverlap,
+      laneIndex,
+      totalLanes,
+    };
+  });
+
+  const totalScheduledMinutes = scheduledBlocks.reduce(
+    (acc, b) => acc + b.durationMinutes,
+    0
+  );
+  const completedScheduledBlocks = scheduledBlocks.filter(
+    (b) => b.completed
+  ).length;
+
+  return {
+    timelineStartHour: minHour,
+    timelineEndHour: maxHour,
+    timelineStartMinutes,
+    timelineEndMinutes,
+    totalSpanMinutes,
+    hourTicks,
+    scheduledBlocks,
+    unscheduledTasks,
+    totalScheduledBlocks: scheduledBlocks.length,
+    completedScheduledBlocks,
+    totalScheduledMinutes,
+    totalScheduledFormatted:
+      formatTimeBlockDuration(totalScheduledMinutes) || '0m',
+    overlapCount,
+  };
+}
+
+// ============================================================================
+// Task Completion Velocity (Current Week vs. Previous 3 Weeks)
+// ============================================================================
+
+export interface TaskCompletionVelocityWeekPoint extends WeeklyTrendPoint {
+  /** Tasks completed per day (completed / 7), rounded to 2 decimals */
+  dailyVelocity: number;
+  /** Week-over-week completion rate delta in percentage points (null for earliest week) */
+  wowDeltaRate: number | null;
+  /** Week-over-week completed task count delta (null for earliest week) */
+  wowDeltaCompleted: number | null;
+  /** Difference in percentage points vs. the 3-week historical average rate */
+  deltaVsThreeWeekAvg: number;
+  /** 3-week historical benchmark rate included on each point for Recharts reference/line overlay */
+  threeWeekAvgBenchmark: number;
+}
+
+export interface TaskCompletionVelocitySummary {
+  weeks: TaskCompletionVelocityWeekPoint[];
+  previousThreeWeeks: TaskCompletionVelocityWeekPoint[];
+  currentWeek: TaskCompletionVelocityWeekPoint;
+  currentCompletionRate: number;
+  threeWeekAvgRate: number;
+  threeWeekAvgCompleted: number;
+  threeWeekAvgDailyVelocity: number;
+  velocityDeltaVsThreeWeekAvg: number;
+  velocityDeltaVsLastWeek: number;
+  completedDeltaVsThreeWeekAvg: number;
+  momentumDirection: TrendDirection;
+  momentumLabel: 'Accelerating' | 'Decelerating' | 'Steady Pace';
+  velocityIndex: number;
+  peakWeek: TaskCompletionVelocityWeekPoint;
+  insightSummary: string;
+}
+
+export function calculateTaskCompletionVelocity(
+  columns: DayColumn[],
+  selectedDate: string,
+  historicalOverrides?: ReadonlyArray<{
+    label?: string;
+    completed: number;
+    pending: number;
+  }>
+): TaskCompletionVelocitySummary {
+  const baseTrends = buildWeeklyProgressTrends(columns, selectedDate);
+
+  const normalizedTrends: WeeklyTrendPoint[] = baseTrends.map((pt, index) => {
+    if (
+      !pt.isCurrentWeek &&
+      historicalOverrides &&
+      historicalOverrides[index]
+    ) {
+      const override = historicalOverrides[index];
+      const completed = Math.max(0, Math.round(override.completed));
+      const pending = Math.max(0, Math.round(override.pending));
+      const total = completed + pending;
+      const completionRate =
+        total === 0 ? 0 : Math.round((completed / total) * 100);
+      return {
+        ...pt,
+        weekLabel: override.label || pt.weekLabel,
+        completed,
+        pending,
+        total,
+        completionRate,
+      };
+    }
+    return pt;
+  });
+
+  const historicalRaw = normalizedTrends.slice(0, 3);
+  const threeWeekAvgRate =
+    historicalRaw.length === 0
+      ? 0
+      : Math.round(
+          historicalRaw.reduce((sum, w) => sum + w.completionRate, 0) /
+            historicalRaw.length
+        );
+
+  const threeWeekAvgCompleted =
+    historicalRaw.length === 0
+      ? 0
+      : Number(
+          (
+            historicalRaw.reduce((sum, w) => sum + w.completed, 0) /
+            historicalRaw.length
+          ).toFixed(1)
+        );
+
+  const threeWeekAvgDailyVelocity =
+    historicalRaw.length === 0
+      ? 0
+      : Number(
+          (
+            historicalRaw.reduce((sum, w) => sum + w.completed / 7, 0) /
+            historicalRaw.length
+          ).toFixed(2)
+        );
+
+  const weeks: TaskCompletionVelocityWeekPoint[] = normalizedTrends.map(
+    (pt, idx) => {
+      const prev = idx > 0 ? normalizedTrends[idx - 1] : null;
+      const dailyVelocity = Number((pt.completed / 7).toFixed(2));
+      const wowDeltaRate = prev ? pt.completionRate - prev.completionRate : null;
+      const wowDeltaCompleted = prev ? pt.completed - prev.completed : null;
+      const deltaVsThreeWeekAvg = pt.completionRate - threeWeekAvgRate;
+
+      return {
+        ...pt,
+        dailyVelocity,
+        wowDeltaRate,
+        wowDeltaCompleted,
+        deltaVsThreeWeekAvg,
+        threeWeekAvgBenchmark: threeWeekAvgRate,
+      };
+    }
+  );
+
+  const previousThreeWeeks = weeks.slice(0, 3);
+  const currentWeek = weeks[weeks.length - 1];
+  const lastWeek =
+    previousThreeWeeks[previousThreeWeeks.length - 1] ?? currentWeek;
+
+  const currentCompletionRate = currentWeek.completionRate;
+  const velocityDeltaVsThreeWeekAvg = currentCompletionRate - threeWeekAvgRate;
+  const velocityDeltaVsLastWeek =
+    currentCompletionRate - lastWeek.completionRate;
+  const completedDeltaVsThreeWeekAvg = Number(
+    (currentWeek.completed - threeWeekAvgCompleted).toFixed(1)
+  );
+
+  const momentumDirection: TrendDirection =
+    velocityDeltaVsThreeWeekAvg > 0
+      ? 'up'
+      : velocityDeltaVsThreeWeekAvg < 0
+      ? 'down'
+      : 'flat';
+
+  const momentumLabel: 'Accelerating' | 'Decelerating' | 'Steady Pace' =
+    momentumDirection === 'up'
+      ? 'Accelerating'
+      : momentumDirection === 'down'
+      ? 'Decelerating'
+      : 'Steady Pace';
+
+  const velocityIndex =
+    threeWeekAvgRate === 0
+      ? currentCompletionRate > 0
+        ? 100 + currentCompletionRate
+        : 100
+      : Math.round((currentCompletionRate / threeWeekAvgRate) * 100);
+
+  const peakWeek = weeks.reduce((best, candidate) =>
+    candidate.completionRate >= best.completionRate ? candidate : best
+  , weeks[0]);
+
+  const formattedDeltaAvg =
+    velocityDeltaVsThreeWeekAvg > 0
+      ? `+${velocityDeltaVsThreeWeekAvg}%`
+      : `${velocityDeltaVsThreeWeekAvg}%`;
+
+  const insightSummary =
+    momentumDirection === 'up'
+      ? `This week's completion rate (${currentCompletionRate}%) is outpacing your prior 3-week average (${threeWeekAvgRate}%) by ${formattedDeltaAvg}, averaging ${currentWeek.dailyVelocity} completed tasks/day.`
+      : momentumDirection === 'down'
+      ? `This week's completion rate (${currentCompletionRate}%) is ${Math.abs(
+          velocityDeltaVsThreeWeekAvg
+        )}% below your prior 3-week average (${threeWeekAvgRate}%). Complete ${Math.max(
+          1,
+          Math.ceil(
+            (threeWeekAvgRate / 100) * currentWeek.total -
+              currentWeek.completed
+          )
+        )} more task(s) to match your 3-week pace.`
+      : `This week's completion rate (${currentCompletionRate}%) matches your prior 3-week average (${threeWeekAvgRate}%) at a steady ${currentWeek.dailyVelocity} tasks/day pace.`;
+
+  return {
+    weeks,
+    previousThreeWeeks,
+    currentWeek,
+    currentCompletionRate,
+    threeWeekAvgRate,
+    threeWeekAvgCompleted,
+    threeWeekAvgDailyVelocity,
+    velocityDeltaVsThreeWeekAvg,
+    velocityDeltaVsLastWeek,
+    completedDeltaVsThreeWeekAvg,
+    momentumDirection,
+    momentumLabel,
+    velocityIndex,
+    peakWeek,
+    insightSummary,
+  };
+}
 
 
 

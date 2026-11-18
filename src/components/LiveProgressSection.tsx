@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Check,
+  Clock,
   Archive,
   Sparkles,
   ClipboardPaste,
@@ -23,8 +24,10 @@ import {
   CategoryColorId,
   CustomCategoryDefinition,
   DASHBOARD_ENTRANCE_ITEM_VARIANTS,
+  DEFAULT_EOD_TARGET_HOUR,
   DEFAULT_TASK_CATEGORIES,
   DashboardMetrics,
+  DayColumn,
   DetailedTask,
   MilestoneBadgeTier,
   TASK_CATEGORIES,
@@ -32,6 +35,7 @@ import {
   ThemeId,
   THEMES,
   buildWeeklyCompletionBarSummary,
+  calculateEndOfDayTimeRemaining,
   calculateWeeklyTrendComparison,
   countTasksByCategory,
   detectNewlyUnlockedMilestoneBadges,
@@ -48,6 +52,7 @@ import {
 } from './InteractiveDashboard';
 import { VoiceMicButton } from './VoiceMicButton';
 import { PomodoroTimer } from './PomodoroTimer';
+import { DailyTaskProgressLineChart } from './DailyTaskProgressLineChart';
 
 const MILESTONE_TIER_PALETTES: Record<
   MilestoneBadgeTier,
@@ -617,6 +622,7 @@ export const WeeklyCompletionProgressBar: React.FC<
 };
 
 interface LiveProgressBoardProps {
+  columns?: DayColumn[];
   detailedTasks: DetailedTask[];
   metrics: DashboardMetrics;
   activeTheme: ThemeId;
@@ -644,6 +650,7 @@ interface LiveProgressBoardProps {
 }
 
 export const LiveProgressBoard: React.FC<LiveProgressBoardProps> = ({
+  columns,
   detailedTasks,
   metrics,
   activeTheme,
@@ -1162,6 +1169,26 @@ export const LiveProgressBoard: React.FC<LiveProgressBoardProps> = ({
                       );
                     })()}
 
+                    {/* Time Remaining before 5pm End-of-Day for Non-Completed Tasks */}
+                    {!task.completed && task.text.trim().length > 0 && (() => {
+                      const eodInfo = calculateEndOfDayTimeRemaining({
+                        targetHour: DEFAULT_EOD_TARGET_HOUR,
+                        completed: task.completed,
+                      });
+                      return (
+                        <span
+                          data-testid={`focus-task-time-remaining-${task.id}`}
+                          data-remaining-minutes={eodInfo.remainingMinutes}
+                          data-urgency={eodInfo.urgency}
+                          title={eodInfo.detailedLabel}
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#FAF6F0] text-[#5A534C] border border-[#E5DEC9] shrink-0 leading-none tabular-nums"
+                        >
+                          <Clock className="w-2.5 h-2.5 text-[#B05C37] shrink-0" />
+                          <span>{eodInfo.shortLabel}</span>
+                        </span>
+                      );
+                    })()}
+
                     <VoiceMicButton
                       currentText={task.text}
                       onUpdateText={(newText) =>
@@ -1482,6 +1509,16 @@ export const LiveProgressBoard: React.FC<LiveProgressBoardProps> = ({
             <div className="h-1" />
           </motion.div>
         </div>
+
+        {/* Daily Task Progress Line Chart (Mon–Sun) */}
+        {columns && columns.length > 0 && (
+          <div className="mt-3.5 sm:mt-4">
+            <DailyTaskProgressLineChart
+              columns={columns}
+              activeTheme={activeTheme}
+            />
+          </div>
+        )}
       </motion.div>
     </div>
   );

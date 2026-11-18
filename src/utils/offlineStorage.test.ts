@@ -155,3 +155,38 @@ test('offlineStorage: resolveDashboardSyncConflict merges newer server baseline 
   assert.ok(catNames.includes('RemoteTag'));
   assert.ok(catNames.includes('LocalOfflineTag'));
 });
+
+test('PWA manifest.json contains required application name, icons, theme colors, and scope configuration', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const manifestPath = path.resolve(process.cwd(), 'public/manifest.json');
+  assert.ok(fs.existsSync(manifestPath), 'public/manifest.json must exist');
+
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  assert.equal(manifest.id, '/');
+  assert.equal(manifest.name, 'Interactive Weekly To-Do Dashboard');
+  assert.equal(manifest.short_name, 'Weekly To-Do');
+  assert.ok(manifest.short_name.length <= 12);
+  assert.equal(manifest.start_url, '/');
+  assert.equal(manifest.scope, '/');
+  assert.equal(manifest.display, 'standalone');
+  assert.equal(manifest.theme_color, '#FAF6F0');
+  assert.equal(manifest.background_color, '#FAF6F0');
+  assert.ok(Array.isArray(manifest.icons));
+
+  const has192 = manifest.icons.some(
+    (i: { sizes: string; purpose: string }) =>
+      i.sizes === '192x192' && i.purpose === 'any'
+  );
+  const has512 = manifest.icons.some(
+    (i: { sizes: string; purpose: string }) =>
+      i.sizes === '512x512' && i.purpose === 'any'
+  );
+  const hasMaskable512 = manifest.icons.some(
+    (i: { sizes: string; purpose: string }) =>
+      i.sizes === '512x512' && i.purpose === 'maskable'
+  );
+  assert.ok(has192, 'Must include 192x192 any icon');
+  assert.ok(has512, 'Must include 512x512 any icon');
+  assert.ok(hasMaskable512, 'Must include 512x512 maskable icon');
+});

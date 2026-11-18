@@ -2,6 +2,7 @@ import React from 'react';
 import { SectionHeader } from '../components/SectionHeader';
 import { BrowserFrame } from '../components/BrowserFrame';
 import { InteractiveDashboard } from '../components/InteractiveDashboard';
+import { InteractiveCalendarSection } from '../components/InteractiveCalendarSection';
 import { SharedDashboardPageProps } from './types';
 
 export const MonthlyYearlyPage: React.FC<SharedDashboardPageProps> = ({
@@ -30,6 +31,9 @@ export const MonthlyYearlyPage: React.FC<SharedDashboardPageProps> = ({
   onCycleGoalStatus,
   onCycleGoalCategory,
   onUpdateGoalText,
+  onAddCalendarTask,
+  onUpdateCalendarTask,
+  onDeleteCalendarTask,
 }) => {
   return (
     <section
@@ -42,12 +46,26 @@ export const MonthlyYearlyPage: React.FC<SharedDashboardPageProps> = ({
           className="w-full"
           defaultFullscreen
         >
-          <div className="p-3 sm:p-4 lg:p-5 flex-1 flex flex-col justify-between">
+          <div className="p-3 sm:p-4 lg:p-5 flex-1 flex flex-col justify-between gap-4">
             <SectionHeader
               eyebrow="MONTHLY & YEARLY"
               italicSubtitle="plan the"
               title="BIGGER PICTURE, TOO"
             />
+
+            {onAddCalendarTask && onUpdateCalendarTask && onDeleteCalendarTask && (
+              <InteractiveCalendarSection
+                columns={columns}
+                activeTheme={activeTheme}
+                selectedDate={selectedDate}
+                customCategories={customCategories}
+                onDateChange={onDateChange}
+                onToggleDailyTask={onToggleDailyTask}
+                onAddCalendarTask={onAddCalendarTask}
+                onUpdateCalendarTask={onUpdateCalendarTask}
+                onDeleteCalendarTask={onDeleteCalendarTask}
+              />
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mt-2">
               {/* Monthly Goals Window */}

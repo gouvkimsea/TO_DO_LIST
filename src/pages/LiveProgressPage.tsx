@@ -7,6 +7,9 @@ import {
 } from '../components/LiveProgressSection';
 import { WeeklyProgressTrendsChart } from '../components/WeeklyProgressTrendsChart';
 import { WeeklyTaskIntensityHeatmap } from '../components/WeeklyTaskIntensityHeatmap';
+import { DailyTaskProgressLineChart } from '../components/DailyTaskProgressLineChart';
+import { PriorityDistributionDonutSection } from '../components/PriorityDistributionDonutSection';
+import { TaskCompletionVelocitySection } from '../components/TaskCompletionVelocitySection';
 import { SharedDashboardPageProps } from './types';
 
 export const LiveProgressPage: React.FC<SharedDashboardPageProps> = ({
@@ -97,6 +100,7 @@ export const LiveProgressPage: React.FC<SharedDashboardPageProps> = ({
           {chartTab === 'breakdown' ? (
             <div className="flex-1 flex flex-col">
               <LiveProgressBoard
+                columns={columns}
                 detailedTasks={detailedTasks}
                 metrics={metrics}
                 activeTheme={activeTheme}
@@ -116,7 +120,17 @@ export const LiveProgressPage: React.FC<SharedDashboardPageProps> = ({
                 onOpenBulkImportModal={onOpenBulkImportModal}
                 onSelectTheme={onSelectTheme}
               />
-              <div className="px-3 sm:px-4 lg:px-5 pb-4 bg-[#FAF7F2]">
+              <div className="px-3 sm:px-4 lg:px-5 pb-4 bg-[#FAF7F2] flex flex-col gap-3.5 sm:gap-4">
+                <TaskCompletionVelocitySection
+                  columns={columns}
+                  selectedDate={selectedDate}
+                  activeTheme={activeTheme}
+                />
+                <PriorityDistributionDonutSection
+                  columns={columns}
+                  detailedTasks={detailedTasks}
+                  activeTheme={activeTheme}
+                />
                 <WeeklyTaskIntensityHeatmap
                   columns={columns}
                   detailedTasks={detailedTasks}
@@ -131,6 +145,20 @@ export const LiveProgressPage: React.FC<SharedDashboardPageProps> = ({
                 metrics={metrics}
                 activeTheme={activeTheme}
               />
+              <TaskCompletionVelocitySection
+                columns={columns}
+                selectedDate={selectedDate}
+                activeTheme={activeTheme}
+              />
+              <PriorityDistributionDonutSection
+                columns={columns}
+                detailedTasks={detailedTasks}
+                activeTheme={activeTheme}
+              />
+              <DailyTaskProgressLineChart
+                columns={columns}
+                activeTheme={activeTheme}
+              />
               <WeeklyTaskIntensityHeatmap
                 columns={columns}
                 detailedTasks={detailedTasks}
@@ -142,6 +170,20 @@ export const LiveProgressPage: React.FC<SharedDashboardPageProps> = ({
             <div className="p-3 sm:p-4 flex-1 flex flex-col gap-3.5">
               <WeeklyCompletionProgressBar
                 metrics={metrics}
+                activeTheme={activeTheme}
+              />
+              <TaskCompletionVelocitySection
+                columns={columns}
+                selectedDate={selectedDate}
+                activeTheme={activeTheme}
+              />
+              <PriorityDistributionDonutSection
+                columns={columns}
+                detailedTasks={detailedTasks}
+                activeTheme={activeTheme}
+              />
+              <DailyTaskProgressLineChart
+                columns={columns}
                 activeTheme={activeTheme}
               />
               <WeeklyProgressTrendsChart
