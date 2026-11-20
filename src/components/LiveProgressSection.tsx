@@ -432,7 +432,7 @@ export const WeeklyCompletionProgressBar: React.FC<
           </span>
         </div>
 
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           {metrics.dailyProgress.map((day) => (
             <span
               key={day.dayId}
@@ -491,7 +491,7 @@ export const WeeklyCompletionProgressBar: React.FC<
           </span>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
           {milestoneEval.badges.map((badge) => {
             const palette = MILESTONE_TIER_PALETTES[badge.tier];
             return (

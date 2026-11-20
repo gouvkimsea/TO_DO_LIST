@@ -80,6 +80,9 @@ import {
   resetDashboardInitialLoadEntranceForTest,
   resolveDashboardEntranceInitialProp,
   calculateTaskCompletionVelocity,
+  getMobileNavigationGroups,
+  MOBILE_NAVIGATION_ITEMS,
+  MOBILE_NAVIGATION_GROUPS,
 } from './todoLogic';
 
 test('cyclePriority cycles High -> Med -> Low -> High', () => {
@@ -3016,6 +3019,23 @@ test('calculateTaskCompletionVelocity compares current week completion rate agai
   assert.equal(steadyVelocity.momentumLabel, 'Steady Pace');
   assert.equal(steadyVelocity.velocityIndex, 100);
 });
+
+test('getMobileNavigationGroups organizes all 10 routes into logical mobile groups with descriptions and bottom tabs', () => {
+  assert.equal(MOBILE_NAVIGATION_ITEMS.length, PAGE_ROUTES.length);
+  assert.equal(MOBILE_NAVIGATION_GROUPS.length, 3);
+
+  const navState = getMobileNavigationGroups('/live-progress');
+  assert.equal(navState.activeItem.path, '/live-progress');
+  assert.equal(navState.activeItem.label, 'Live Progress');
+  assert.equal(navState.activeGroup.id, 'analytics');
+  assert.equal(navState.primaryBottomTabs.length, 4);
+  for (const item of MOBILE_NAVIGATION_ITEMS) {
+    assert.ok(item.description.length >= 15);
+    assert.ok(item.shortTitle.length >= 3);
+    assert.ok(item.badgeText.length >= 3);
+  }
+});
+
 
 
 

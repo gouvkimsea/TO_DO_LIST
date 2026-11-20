@@ -654,3 +654,22 @@ html[data-custom-buttons-active="true"] [data-custom-btn="secondary"] {
   color: var(--custom-btn-secondary-text) !important;
 }
 
+/* ==========================================================================
+   MOBILE-FIRST TOUCH & SCROLL UTILITIES
+   ========================================================================== */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@media (max-width: 767px) {
+  :root {
+    --navbar-height: 92px;
+  }
+}
+
+

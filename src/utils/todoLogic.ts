@@ -7472,6 +7472,170 @@ export function calculateTaskCompletionVelocity(
   };
 }
 
+// ============================================================================
+// Mobile-First Navigation Architecture (Logical Groups & Large Touch Cards)
+// ============================================================================
+
+export type MobileNavGroupId = 'workspace' | 'analytics' | 'personalization';
+
+export interface MobileNavCardItem {
+  path: PagePath;
+  label: string;
+  shortTitle: string;
+  description: string;
+  groupId: MobileNavGroupId;
+  badgeText: string;
+  isPrimaryBottomTab: boolean;
+}
+
+export interface MobileNavGroup {
+  id: MobileNavGroupId;
+  title: string;
+  subtitle: string;
+  items: MobileNavCardItem[];
+}
+
+export const MOBILE_NAVIGATION_ITEMS: readonly MobileNavCardItem[] = [
+  {
+    path: '/',
+    label: 'Dashboard',
+    shortTitle: 'Home',
+    description: 'Overview, focus tasks, calendar & daily time blocks',
+    groupId: 'workspace',
+    badgeText: 'Home',
+    isPrimaryBottomTab: true,
+  },
+  {
+    path: '/daily-columns',
+    label: 'Daily Columns',
+    shortTitle: 'Columns',
+    description: 'Spacious Mon–Sun task columns with drag & notes',
+    groupId: 'workspace',
+    badgeText: '7 Days',
+    isPrimaryBottomTab: true,
+  },
+  {
+    path: '/monthly-yearly',
+    label: 'Monthly & Yearly',
+    shortTitle: 'Calendar',
+    description: 'Interactive calendar, monthly & yearly goal boards',
+    groupId: 'workspace',
+    badgeText: 'Planner',
+    isPrimaryBottomTab: true,
+  },
+  {
+    path: '/live-progress',
+    label: 'Live Progress',
+    shortTitle: 'Progress',
+    description: 'Completion velocity, priority donut & heat map',
+    groupId: 'analytics',
+    badgeText: 'Velocity',
+    isPrimaryBottomTab: true,
+  },
+  {
+    path: '/spreadsheet',
+    label: 'Spreadsheet',
+    shortTitle: 'Sheet',
+    description: 'Mobile Day Sheet & A–G grid with CSV export',
+    groupId: 'analytics',
+    badgeText: 'A–G Grid',
+    isPrimaryBottomTab: false,
+  },
+  {
+    path: '/color-themes',
+    label: 'Color Themes',
+    shortTitle: 'Themes',
+    description: 'Custom backgrounds, button colors & 4 palettes',
+    groupId: 'personalization',
+    badgeText: 'Studio',
+    isPrimaryBottomTab: false,
+  },
+  {
+    path: '/one-click',
+    label: 'One Click Away',
+    shortTitle: 'One Click',
+    description: 'Instant tap controls for priority, tags & status',
+    groupId: 'personalization',
+    badgeText: 'Interactive',
+    isPrimaryBottomTab: false,
+  },
+  {
+    path: '/how-it-works',
+    label: 'How It Works',
+    shortTitle: 'Guide',
+    description: 'Offline auto-save workflow & quick-start steps',
+    groupId: 'personalization',
+    badgeText: 'Offline',
+    isPrimaryBottomTab: false,
+  },
+  {
+    path: '/built-to-reuse',
+    label: 'Built to Reuse',
+    shortTitle: 'Reuse',
+    description: 'One-tap weekly reset & reusable planning views',
+    groupId: 'personalization',
+    badgeText: 'Evergreen',
+    isPrimaryBottomTab: false,
+  },
+  {
+    path: '/everything-you-get',
+    label: 'Everything You Get',
+    shortTitle: 'Package',
+    description: 'Download standalone HTML, Excel, Sheets & PDF',
+    groupId: 'personalization',
+    badgeText: 'Download',
+    isPrimaryBottomTab: false,
+  },
+] as const;
+
+export const MOBILE_NAVIGATION_GROUPS: readonly MobileNavGroup[] = [
+  {
+    id: 'workspace',
+    title: 'Core Workspace & Planning',
+    subtitle: 'Daily tasks, weekly columns & calendar schedules',
+    items: MOBILE_NAVIGATION_ITEMS.filter((i) => i.groupId === 'workspace'),
+  },
+  {
+    id: 'analytics',
+    title: 'Live Analytics & Tracking',
+    subtitle: '4-week completion velocity, charts & spreadsheet',
+    items: MOBILE_NAVIGATION_ITEMS.filter((i) => i.groupId === 'analytics'),
+  },
+  {
+    id: 'personalization',
+    title: 'Themes, Tools & Downloads',
+    subtitle: 'Custom appearance studio, interactive guides & exports',
+    items: MOBILE_NAVIGATION_ITEMS.filter(
+      (i) => i.groupId === 'personalization'
+    ),
+  },
+] as const;
+
+export function getMobileNavigationGroups(currentPath: PagePath): {
+  groups: MobileNavGroup[];
+  activeItem: MobileNavCardItem;
+  activeGroup: MobileNavGroup;
+  primaryBottomTabs: MobileNavCardItem[];
+} {
+  const activeItem =
+    MOBILE_NAVIGATION_ITEMS.find((item) => item.path === currentPath) ??
+    MOBILE_NAVIGATION_ITEMS[0];
+  const activeGroup =
+    MOBILE_NAVIGATION_GROUPS.find((g) => g.id === activeItem.groupId) ??
+    MOBILE_NAVIGATION_GROUPS[0];
+  const primaryBottomTabs = MOBILE_NAVIGATION_ITEMS.filter(
+    (item) => item.isPrimaryBottomTab
+  );
+
+  return {
+    groups: [...MOBILE_NAVIGATION_GROUPS],
+    activeItem,
+    activeGroup,
+    primaryBottomTabs,
+  };
+}
+
+
 
 
 

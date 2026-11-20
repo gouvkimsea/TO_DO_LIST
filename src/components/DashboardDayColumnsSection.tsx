@@ -588,7 +588,7 @@ export const DashboardDayColumnsSection: React.FC<
                         }`}
                       >
                         {/* Task Row: Checkbox + Priority + Title + Persistent Notes Trigger */}
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-2 sm:gap-1.5">
                           <button
                             type="button"
                             role="checkbox"
@@ -613,7 +613,7 @@ export const DashboardDayColumnsSection: React.FC<
                                   : undefined;
                               onToggleDailyTask(col.id, task.id, origin);
                             }}
-                            className="w-4 h-4 rounded-[4px] flex items-center justify-center shrink-0 transition-colors cursor-pointer"
+                            className="w-6 h-6 sm:w-4 sm:h-4 rounded-[6px] sm:rounded-[4px] flex items-center justify-center shrink-0 transition-colors cursor-pointer"
                             style={{
                               backgroundColor: task.completed
                                 ? theme.checkboxBg
@@ -624,7 +624,7 @@ export const DashboardDayColumnsSection: React.FC<
                             }}
                           >
                             {task.completed && (
-                              <Check className="w-2.5 h-2.5 text-white stroke-[3]" />
+                              <Check className="w-3.5 h-3.5 sm:w-2.5 sm:h-2.5 text-white stroke-[3]" />
                             )}
                           </button>
 
@@ -633,7 +633,7 @@ export const DashboardDayColumnsSection: React.FC<
                             onClick={() => onCycleDailyPriority(col.id, task.id)}
                             title={`Priority: ${task.priority} (click to cycle)`}
                             aria-label={`Cycle priority for ${task.text} (currently ${task.priority})`}
-                            className="w-2 h-2 rounded-full shrink-0 cursor-pointer hover:scale-125 transition-transform"
+                            className="w-3 h-3 sm:w-2 sm:h-2 rounded-full shrink-0 cursor-pointer hover:scale-125 transition-transform"
                             style={{
                               backgroundColor:
                                 PRIORITY_DOT_COLORS[task.priority],
@@ -652,7 +652,7 @@ export const DashboardDayColumnsSection: React.FC<
                             }
                             aria-label={`${col.dayName} task ${idx + 1} title`}
                             data-testid={`dashboard-day-task-title-${task.id}`}
-                            className={`w-full min-w-0 bg-transparent text-[11px] font-semibold focus:outline-none focus:bg-[#FAF6F0] rounded px-1 ${
+                            className={`w-full min-w-0 bg-transparent text-xs sm:text-[11px] font-semibold focus:outline-none focus:bg-[#FAF6F0] rounded px-1 py-1 sm:py-0 ${
                               task.completed
                                 ? 'line-through text-[#A7A097]'
                                 : 'text-[#2F2B28]'
@@ -676,13 +676,13 @@ export const DashboardDayColumnsSection: React.FC<
                                 ? `Notes: ${noteSummary.previewText} (click to edit)`
                                 : 'Add or edit task-specific notes'
                             }
-                            className={`relative inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9.5px] font-bold border transition-all cursor-pointer shrink-0 ${
+                            className={`relative inline-flex items-center gap-1 min-h-[34px] sm:min-h-0 px-2.5 py-1 sm:px-1.5 sm:py-0.5 rounded-lg sm:rounded-md text-[11px] sm:text-[9.5px] font-bold border transition-all cursor-pointer shrink-0 ${
                               isInlineOpen || noteSummary.hasNotes
                                 ? 'bg-[#F6ECE3] text-[#9A4E28] border-[#E5C5AF] hover:bg-[#EFE0D3]'
                                 : 'bg-[#FAF7F2] text-[#6E675F] border-[#E2D9CC] hover:text-[#2F2B28] hover:bg-[#EFECE6]'
                             }`}
                           >
-                            <FileText className="w-2.5 h-2.5 shrink-0" />
+                            <FileText className="w-3 h-3 sm:w-2.5 sm:h-2.5 shrink-0" />
                             <span>Notes</span>
                             {noteSummary.hasNotes && (
                               <span
@@ -694,8 +694,8 @@ export const DashboardDayColumnsSection: React.FC<
                         </div>
 
                         {/* Sub-row: Time-Block Trigger Badge + Category Tag + EOD Time Remaining */}
-                        <div className="flex flex-wrap items-center justify-between gap-1 mt-1.5 pl-5">
-                          <div className="flex flex-wrap items-center gap-1">
+                        <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-1 mt-2 sm:mt-1.5 pl-8 sm:pl-5">
+                          <div className="flex flex-wrap items-center gap-1.5 sm:gap-1">
                             {/* Time-Block Trigger Button */}
                             <button
                               type="button"
@@ -714,13 +714,13 @@ export const DashboardDayColumnsSection: React.FC<
                                   ? `Scheduled: ${timeBlock.formattedRange} (${timeBlock.formattedDuration}) — Click to change`
                                   : 'Click to assign a start and end time block'
                               }
-                              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8.5px] font-bold border leading-none tabular-nums transition-colors cursor-pointer shrink-0 ${
+                              className={`inline-flex items-center gap-1 min-h-[32px] sm:min-h-0 px-2 py-1 sm:px-1.5 sm:py-0.5 rounded-md sm:rounded text-[10px] sm:text-[8.5px] font-bold border leading-none tabular-nums transition-colors cursor-pointer shrink-0 ${
                                 isTimeBlockOpen || timeBlock.isTimeBlocked
                                   ? 'bg-[#EDF5F0] text-[#1F5E3B] border-[#B8DEC6] hover:bg-[#E0EFE6]'
                                   : 'bg-[#FAF7F2] text-[#7A7269] border-[#E2D9CC] hover:text-[#2F2B28] hover:bg-[#EFECE6]'
                               }`}
                             >
-                              <Clock className="w-2.5 h-2.5 shrink-0" />
+                              <Clock className="w-3 h-3 sm:w-2.5 sm:h-2.5 shrink-0" />
                               <span>
                                 {timeBlock.isTimeBlocked
                                   ? `${timeBlock.startTime}–${timeBlock.endTime} (${timeBlock.formattedDuration})`

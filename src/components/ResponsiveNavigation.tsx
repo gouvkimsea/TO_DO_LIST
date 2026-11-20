@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Archive,
+  ArrowLeft,
   BarChart3,
   Calendar,
   CheckSquare,
@@ -30,6 +31,8 @@ import {
   ThemeId,
   ViewMode,
   sanitizeTaskText,
+  getMobileNavigationGroups,
+  MOBILE_NAVIGATION_ITEMS,
 } from '../utils/todoLogic';
 import { ColorScheme, ColorSchemePreference } from '../utils/colorScheme';
 import { RouterLink } from './RouterLink';
@@ -137,6 +140,7 @@ export const ResponsiveNavigation: React.FC<ResponsiveNavigationProps> = ({
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const theme = THEMES[activeTheme];
+  const { groups: mobileNavGroups } = getMobileNavigationGroups(currentPath);
 
   // Close mobile drawer when route changes or Escape is pressed
   useEffect(() => {
@@ -193,7 +197,7 @@ export const ResponsiveNavigation: React.FC<ResponsiveNavigationProps> = ({
                   currentPath={currentPath}
                   onNavigate={onNavigate}
                   data-testid="app-brand-link"
-                  className="inline-flex items-center gap-2 font-serif-display text-sm sm:text-lg font-bold tracking-tight text-[#2F2B28] hover:text-[#B05C37] whitespace-nowrap shrink-0 py-1"
+                  className="inline-flex items-center gap-1.5 sm:gap-2 font-serif-display text-xs sm:text-lg font-bold tracking-tight text-[#2F2B28] hover:text-[#B05C37] whitespace-nowrap min-w-0 py-1"
                 >
                   <img
                     src="/assets/aistudio/image_a84fc237.png"
@@ -201,7 +205,7 @@ export const ResponsiveNavigation: React.FC<ResponsiveNavigationProps> = ({
                     data-testid="app-brand-logo"
                     className="w-7 h-7 sm:w-8 sm:h-8 object-contain shrink-0 drop-shadow-2xs"
                   />
-                  <span>my-tasks.html</span>
+                  <span className="truncate">my-tasks.html</span>
                 </RouterLink>
                 <span
                   aria-hidden="true"
@@ -315,9 +319,9 @@ export const ResponsiveNavigation: React.FC<ResponsiveNavigationProps> = ({
                   title="Customize background image, button colors, and appearance mode"
                   data-testid="open-theme-customizer-btn"
                   data-custom-btn="primary"
-                  className="inline-flex items-center justify-center gap-1.5 min-w-[38px] min-h-[38px] px-2 sm:px-3 py-1.5 rounded-xl text-xs font-extrabold bg-[#2F2B28] hover:bg-[#3B3632] text-[#FAF6F0] border border-[#4A433C] shadow-2xs cursor-pointer whitespace-nowrap transition-colors"
+                  className="inline-flex items-center justify-center gap-1.5 min-w-[40px] min-h-[40px] px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-extrabold bg-[#2F2B28] hover:bg-[#3B3632] text-[#FAF6F0] border border-[#4A433C] shadow-2xs cursor-pointer whitespace-nowrap transition-colors"
                 >
-                  <Palette className="w-3.5 h-3.5 shrink-0" />
+                  <Palette className="w-4 h-4 shrink-0" />
                   <span className="hidden sm:inline">Customize Theme</span>
                 </button>
               )}
@@ -351,7 +355,7 @@ export const ResponsiveNavigation: React.FC<ResponsiveNavigationProps> = ({
                     : 'Unmute completion sound (M)'
                 }
                 data-testid="top-nav-sound-toggle"
-                className="inline-flex items-center justify-center min-w-[40px] min-h-[40px] sm:min-w-[36px] sm:min-h-[36px] p-2 rounded-xl text-[#6E665E] hover:text-[#2F2B28] hover:bg-[#EFECE6] cursor-pointer"
+                className="inline-flex items-center justify-center min-w-[42px] min-h-[42px] sm:min-w-[38px] sm:min-h-[38px] p-2 rounded-xl text-[#6E665E] hover:text-[#2F2B28] hover:bg-[#EFECE6] cursor-pointer"
               >
                 {soundEnabled ? (
                   <Volume2 className="w-4 h-4" />
@@ -380,7 +384,7 @@ export const ResponsiveNavigation: React.FC<ResponsiveNavigationProps> = ({
                     : `System Mode (${colorScheme}) · Click for Light Mode (D)`
                 }
                 data-testid="top-nav-theme-toggle"
-                className="inline-flex items-center justify-center min-w-[40px] min-h-[40px] sm:min-w-[36px] sm:min-h-[36px] p-2 rounded-xl text-[#6E665E] hover:text-[#2F2B28] hover:bg-[#EFECE6] cursor-pointer"
+                className="inline-flex items-center justify-center min-w-[42px] min-h-[42px] sm:min-w-[38px] sm:min-h-[38px] p-2 rounded-xl text-[#6E665E] hover:text-[#2F2B28] hover:bg-[#EFECE6] cursor-pointer"
               >
                 {colorScheme === 'dark' ? (
                   <Sun className="w-4 h-4" />
@@ -390,6 +394,51 @@ export const ResponsiveNavigation: React.FC<ResponsiveNavigationProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Mobile & Tablet Horizontal Touch Route Strip (< 1024px) */}
+          <nav
+            aria-label="Mobile Quick Page Switcher"
+            data-testid="mobile-quick-route-strip"
+            className="lg:hidden flex items-center gap-1.5 pt-1.5 border-t border-[#EFEAE1] overflow-x-auto no-scrollbar pb-0.5"
+          >
+            {currentPath !== '/' && (
+              <RouterLink
+                to="/"
+                currentPath={currentPath}
+                onNavigate={onNavigate}
+                data-testid="mobile-top-back-dashboard-btn"
+                className="inline-flex items-center gap-1 min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-extrabold bg-[#F5DFD0] text-[#9A4E28] border border-[#E5C5AF] shrink-0 whitespace-nowrap"
+              >
+                <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
+                <span>Home</span>
+              </RouterLink>
+            )}
+
+            {MOBILE_NAVIGATION_ITEMS.map((item) => {
+              const isActive = currentPath === item.path;
+              return (
+                <RouterLink
+                  key={item.path}
+                  to={item.path}
+                  currentPath={currentPath}
+                  onNavigate={onNavigate}
+                  data-testid={`mobile-strip-link-${
+                    item.path === '/'
+                      ? 'dashboard'
+                      : item.path.replace(/^\//, '')
+                  }`}
+                  className={`inline-flex items-center gap-1.5 min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
+                    isActive
+                      ? 'bg-[#2F2B28] text-[#FAF6F0] shadow-2xs'
+                      : 'bg-white text-[#4A433C] border border-[#E5DEC9] hover:bg-[#EFECE6]'
+                  }`}
+                >
+                  {getRouteIcon(item.path)}
+                  <span>{item.label}</span>
+                </RouterLink>
+              );
+            })}
+          </nav>
 
           {/* Desktop Horizontal Route Navigation Strip (>= 1024px) */}
           <nav
@@ -471,7 +520,7 @@ export const ResponsiveNavigation: React.FC<ResponsiveNavigationProps> = ({
           />
 
           {/* Slide-Over Panel */}
-          <div className="relative z-10 w-full max-w-[340px] bg-[#FDFBF7] border-r border-[#E5DEC9] h-full flex flex-col shadow-2xl overflow-y-auto">
+          <div className="relative z-10 w-full max-w-[360px] bg-[#FDFBF7] border-r border-[#E5DEC9] h-full flex flex-col shadow-2xl overflow-y-auto">
             {/* Drawer Header */}
             <div className="p-4 border-b border-[#ECE7DF] flex items-center justify-between gap-2 sticky top-0 bg-[#FDFBF7]/95 backdrop-blur-xs z-10">
               <div className="flex items-center gap-2.5 min-w-0">
@@ -510,7 +559,7 @@ export const ResponsiveNavigation: React.FC<ResponsiveNavigationProps> = ({
                   onOpenSearchOverlay();
                 }}
                 data-testid="mobile-drawer-search-btn"
-                className="w-full min-h-[46px] px-3.5 py-2.5 rounded-xl bg-white border border-[#DED8CE] hover:border-[#C87D55] flex items-center justify-between gap-2 text-left shadow-2xs cursor-pointer"
+                className="w-full min-h-[48px] px-3.5 py-2.5 rounded-xl bg-white border border-[#DED8CE] hover:border-[#C87D55] flex items-center justify-between gap-2 text-left shadow-2xs cursor-pointer"
               >
                 <span className="inline-flex items-center gap-2 text-xs font-bold text-[#2F2B28]">
                   <Search className="w-4 h-4 text-[#B05C37]" />
@@ -547,7 +596,7 @@ export const ResponsiveNavigation: React.FC<ResponsiveNavigationProps> = ({
                           setMobileMenuOpen(false);
                         }}
                         data-testid={`mobile-drawer-view-${v.id}`}
-                        className={`min-h-[40px] rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                        className={`min-h-[42px] rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                           isSelected
                             ? 'bg-white text-[#2F2B28] shadow-xs'
                             : 'text-[#6E665E] hover:text-[#2F2B28]'
@@ -560,59 +609,92 @@ export const ResponsiveNavigation: React.FC<ResponsiveNavigationProps> = ({
                 </div>
               </div>
 
-              {/* All 10 Pages Navigation List */}
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#8A8279] block mb-1.5 px-1">
-                  PAGES &amp; VIEWS ({PAGE_ROUTES.length})
-                </span>
-                <nav
-                  aria-label="Mobile Page Links"
-                  className="space-y-1"
-                >
-                  {PAGE_ROUTES.map((route) => {
-                    const isActive = currentPath === route.path;
-                    return (
-                      <RouterLink
-                        key={route.path}
-                        to={route.path}
-                        currentPath={currentPath}
-                        onNavigate={(nextPath) => {
-                          onNavigate(nextPath);
-                          setMobileMenuOpen(false);
-                        }}
-                        data-testid={`mobile-drawer-link-${
-                          route.path === '/'
-                            ? 'dashboard'
-                            : route.path.replace(/^\//, '')
-                        }`}
-                        className={`w-full min-h-[46px] px-3 py-2 rounded-xl flex items-center justify-between gap-2.5 text-left transition-colors ${
-                          isActive
-                            ? 'bg-[#2F2B28] text-[#FAF6F0] font-bold shadow-xs'
-                            : 'bg-white hover:bg-[#FAF6F0] text-[#2F2B28] font-semibold border border-[#ECE7DF]'
-                        }`}
-                      >
-                        <span className="inline-flex items-center gap-2.5 min-w-0">
-                          <span
-                            className={
-                              isActive ? 'text-[#E8956B]' : 'text-[#B05C37]'
-                            }
+              {/* Categorized Large Navigation Cards (3 Logical Groups) */}
+              <nav
+                aria-label="Mobile Page Links"
+                className="space-y-4"
+              >
+                {mobileNavGroups.map((group) => (
+                  <div
+                    key={group.id}
+                    data-testid={`mobile-drawer-group-${group.id}`}
+                    className="space-y-1.5"
+                  >
+                    <div className="px-1">
+                      <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#5A534C] block">
+                        {group.title}
+                      </span>
+                      <span className="text-[10px] font-medium text-[#8A8279] block">
+                        {group.subtitle}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      {group.items.map((item) => {
+                        const isActive = currentPath === item.path;
+                        return (
+                          <RouterLink
+                            key={item.path}
+                            to={item.path}
+                            currentPath={currentPath}
+                            onNavigate={(nextPath) => {
+                              onNavigate(nextPath);
+                              setMobileMenuOpen(false);
+                            }}
+                            data-testid={`mobile-drawer-link-${
+                              item.path === '/'
+                                ? 'dashboard'
+                                : item.path.replace(/^\//, '')
+                            }`}
+                            className={`w-full min-h-[64px] px-3 py-2.5 rounded-2xl flex items-start justify-between gap-2.5 text-left transition-all ${
+                              isActive
+                                ? 'bg-[#2F2B28] text-[#FAF6F0] font-bold shadow-sm'
+                                : 'bg-white hover:bg-[#FAF6F0] text-[#2F2B28] font-semibold border border-[#E6DFD3]'
+                            }`}
                           >
-                            {getRouteIcon(route.path)}
-                          </span>
-                          <span className="text-xs sm:text-sm truncate">
-                            {route.label}
-                          </span>
-                        </span>
-                        {isActive && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/15 text-[#FAF6F0] shrink-0">
-                            Active
-                          </span>
-                        )}
-                      </RouterLink>
-                    );
-                  })}
-                </nav>
-              </div>
+                            <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                              <div
+                                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
+                                  isActive
+                                    ? 'bg-white/15 text-[#E8956B]'
+                                    : 'bg-[#F5EFE6] text-[#B05C37]'
+                                }`}
+                              >
+                                {getRouteIcon(item.path)}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center justify-between gap-1.5">
+                                  <span className="text-xs sm:text-sm font-extrabold truncate">
+                                    {item.label}
+                                  </span>
+                                  <span
+                                    className={`text-[9.5px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                                      isActive
+                                        ? 'bg-white/15 text-[#FAF6F0]'
+                                        : 'bg-[#F2EFE9] text-[#6E665E]'
+                                    }`}
+                                  >
+                                    {isActive ? 'Active' : item.badgeText}
+                                  </span>
+                                </div>
+                                <p
+                                  className={`text-[11px] font-medium mt-0.5 leading-snug ${
+                                    isActive
+                                      ? 'text-[#E5DEC9]'
+                                      : 'text-[#7A7269]'
+                                  }`}
+                                >
+                                  {item.description}
+                                </p>
+                              </div>
+                            </div>
+                          </RouterLink>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </nav>
 
               {/* Color Theme Selector */}
               <div>

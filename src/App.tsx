@@ -132,6 +132,7 @@ import { NotFoundPage } from './pages/NotFoundPage';
 import { SharedDashboardPageProps } from './pages/types';
 import { PomodoroProvider } from './components/PomodoroTimer';
 import { ResponsiveNavigation } from './components/ResponsiveNavigation';
+import { MobilePageNavigatorSection } from './components/MobilePageNavigatorSection';
 import {
   PWAOfflineAndSyncBanner,
   SyncNotificationState,
@@ -2158,10 +2159,24 @@ export default function App() {
             className={`flex-1 flex flex-col focus:outline-none ${
               isPresentationMode
                 ? 'h-dvh max-h-dvh overflow-hidden'
-                : 'min-h-[calc(100dvh-var(--navbar-height,57px))] pb-16 md:pb-0'
+                : 'min-h-[calc(100dvh-var(--navbar-height,57px))] pb-20 md:pb-0'
             }`}
           >
             {renderActivePage()}
+            {!isPresentationMode && (
+              <MobilePageNavigatorSection
+                currentPath={currentPath}
+                activeTheme={activeTheme}
+                archivedCount={archivedTasks.length}
+                onNavigate={handleNavigate}
+                onOpenSearchOverlay={() => setSearchOverlayOpen(true)}
+                onOpenArchiveModal={() => setArchiveModalOpen(true)}
+                onOpenBulkImportModal={handleOpenBulkImportModal}
+                onOpenThemeCustomizerModal={() =>
+                  setThemeCustomizerModalOpen(true)
+                }
+              />
+            )}
           </main>
         </div>
 
