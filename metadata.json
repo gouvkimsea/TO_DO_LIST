@@ -1,0 +1,5 @@
+{
+  "name": "Interactive Weekly To-Do Dashboard",
+  "description": "A self-saving, interactive Weekly, Monthly, and Yearly To-Do List dashboard with 4 color themes, live progress charts, and spreadsheet tracker.",
+  "requestFramePermissions": ["microphone"]
+}
